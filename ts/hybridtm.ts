@@ -593,11 +593,13 @@ export class HybridTM {
                         const sourceElement: XMLElement = Utils.buildXMLElement(sourceEntry.element);
                         const targetElement: XMLElement = Utils.buildXMLElement(targetEntry.element);
                         const match: Match = new Match(
+                            targetEntry.id,
                             sourceElement,
                             targetElement,
                             this.name,
                             semanticScore,
-                            fuzzyScore
+                            fuzzyScore,
+                            targetEntry.metadata?.properties
                         );
                         const rankingScore: number = this.computeRankingScore(match.hybridScore(), sourceEntry, targetEntry);
                         rankedMatches.push({ match, score: rankingScore });

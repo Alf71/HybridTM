@@ -1,7 +1,7 @@
 {
     "name": "hybridtm",
     "productName": "HybridTM",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "description": "HybridTM is a Translation Memory (TM) engine that combines semantic embeddings with fuzzy string matching.",
     "main": "dist/index.js",
     "type": "module",
@@ -30,10 +30,15 @@
         "apache-arrow": "^18.1.0",
         "sdltm": "^2.5.0",
         "typesbcp47": "^1.24.0",
+        "typesmatch": "^0.1.0",
         "typesxml": "^2.2.0"
     },
     "devDependencies": {
-        "@types/node": "^24.13.0",
+        "@types/node": "^24.13.2",
         "typescript": "^6.0.3"
+    },
+    "allowScripts": {
+        "protobufjs@6.11.6": true,
+        "sharp@0.32.6": true
     }
 }
