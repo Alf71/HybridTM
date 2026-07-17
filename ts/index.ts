@@ -13,7 +13,7 @@
 export { BatchImporter } from './batchImporter.js';
 export { HybridTM } from './hybridtm.js';
 export { HybridTMFactory, HybridTMInstanceMetadata } from './hybridtmFactory.js';
-export type { TranslationState } from './importOptions.js';
+export type { ImportOptions, TranslationState } from './importOptions.js';
 export { LangEntry, SearchResult } from './langEntry.js';
 export { Match } from './match.js';
 export { MatchQuality } from './matchQuality.js';

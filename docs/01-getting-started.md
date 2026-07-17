@@ -1,10 +1,10 @@
 # 01 · Getting Started
 
-Use this guide to configure a HybridTM workspace, create your first translation memory instance, and issue the first query. The examples target Node.js 18 or later.
+Use this guide to configure a HybridTM workspace, create your first translation memory instance, and issue the first query. The examples target Node.js 24 or later.
 
 ## Prerequisites
 
-- Node.js 22 LTS or later
+- Node.js 24 LTS or later
 - npm 11+
 - Network access so the selected Xenova model can download on first use (defaults to `HybridTM.QUALITY_MODEL`, a LaBSE encoder)
 - Enough disk space for the LanceDB database directory you select and the model cache stored under your home directory
@@ -98,3 +98,4 @@ Use `tm.concordanceSearch(fragment, language, limit?, filter?)` to retrieve all 
 - Study the runnable counterpart in [samples/src/basicWorkflow.ts](samples/src/basicWorkflow.ts)
 - Continue with [02 · Importing Data](02-importing-data.md) to configure bulk imports
 - Explore scoring and filtering strategies in [03 · Search and Filtering](03-search-and-filtering.md)
+- Prefer the shell? See [05 · Command-Line Interface](05-command-line-interface.md) for the equivalent `hybridtm` commands

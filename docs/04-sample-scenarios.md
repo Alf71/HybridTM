@@ -42,4 +42,4 @@ The `samples/data` directory contains tiny bilingual fixtures:
 
 These files are intentionally short so you can read them alongside the console output.
 
-With the tutorials complete, you can adapt the scripts into your own tools or wire the library into an existing CAT workflow.
+With the tutorials complete, you can adapt the scripts into your own tools or wire the library into an existing CAT workflow. If you'd rather script against HybridTM from the shell instead of TypeScript, see [05 · Command-Line Interface](05-command-line-interface.md).

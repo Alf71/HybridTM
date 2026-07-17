@@ -1003,7 +1003,7 @@ export class HybridTM {
     // DATA IMPORT METHODS
     // ============================
 
-    async importXLIFF(filePath: string, options?: ImportOptions): Promise<void> {
+    async importXLIFF(filePath: string, options?: ImportOptions): Promise<number> {
         // Phase 1: Parse XLIFF and write to temporary JSONL file
         const resolvedOptions: ImportOptions = resolveImportOptions(options);
         const reader: XLIFFReader = new XLIFFReader(filePath, resolvedOptions);
@@ -1012,9 +1012,10 @@ export class HybridTM {
         // Phase 2: Batch import from JSONL file (asynchronous)
         const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
         await importer.import();
+        return reader.getEntryCount();
     }
 
-    async importTMX(filePath: string, options?: ImportOptions): Promise<void> {
+    async importTMX(filePath: string, options?: ImportOptions): Promise<number> {
         // Phase 1: Parse TMX and write to temporary JSONL file
         const resolvedOptions: ImportOptions = resolveImportOptions(options);
         const reader: TMXReader = new TMXReader(filePath, resolvedOptions);
@@ -1023,9 +1024,10 @@ export class HybridTM {
         // Phase 2: Batch import from JSONL file (asynchronous)
         const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
         await importer.import();
+        return reader.getEntryCount();
     }
 
-    async importSDLTM(filePath: string, options?: ImportOptions): Promise<void> {
+    async importSDLTM(filePath: string, options?: ImportOptions): Promise<number> {
         const tempDir = tmpdir();
         const tempFileName = 'tmx_' + Date.now() + '_' + Math.random().toString(36).substring(7) + '.tmx';
         const tempFilePath: string = join(tempDir, tempFileName);
@@ -1037,7 +1039,8 @@ export class HybridTM {
         if (data.status !== 'Success') {
             throw new Error('SDL TM conversion failed for file ' + filePath);
         }
-        await this.importTMX(tempFilePath, options);
+        const count: number = await this.importTMX(tempFilePath, options);
         unlinkSync(tempFilePath);
+        return count;
     }
 }

@@ -11,14 +11,20 @@
  *******************************************************************************/
 
 import { createWriteStream, WriteStream } from "node:fs";
-import { Catalog, CData, ContentHandler, Grammar, TextNode, XMLAttribute, XMLElement, XMLNode } from "typesxml";
+import { XMLAttribute } from "typesxml";
+import {
+    XliffCp, XliffDocument, XliffEc, XliffEm, XliffFile, XliffGroup, XliffIgnorable,
+    XliffMeta, XliffMetaGroup, XliffMrk, XliffPc, XliffPh, XliffSc, XliffSegment,
+    XliffSm, XliffSource, XliffTarget, XliffUnit
+} from "typesxliff";
 import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions, TranslationState } from './importOptions.js';
 import { EntryMetadata } from './langEntry.js';
-import { Utils } from './utils.js';
+
+type InlineContent = string | XliffCp | XliffPh | XliffPc | XliffSc | XliffEc | XliffMrk | XliffSm | XliffEm;
 
 interface SegmentData {
-    source: XMLElement;
-    target: XMLElement;
+    source: XliffSource;
+    target: XliffTarget;
     pureSource: string;
     pureTarget: string;
     metadata?: EntryMetadata;
@@ -37,17 +43,11 @@ interface HandlerEntry {
     metadata?: EntryMetadata;
 }
 
-export class XLIFFHandler implements ContentHandler {
+export class XLIFFHandler {
 
-    inCdData: boolean = false;
-    currentCData: CData = new CData('');
-    stack: Array<XMLElement> = [];
-
-    srcLang: string = '';
-    tgtLang: string = '';
-    original: string = '';
-    fileId: string = '';
-    private writeStream: WriteStream;
+    private srcLang: string = '';
+    private tgtLang: string = '';
+    private readonly writeStream: WriteStream;
     private readonly completionPromise: Promise<void>;
     private entryCount: number = 0;
     private readonly options: ResolvedImportOptions;
@@ -61,10 +61,6 @@ export class XLIFFHandler implements ContentHandler {
         this.options = resolveImportOptions(options);
     }
 
-    setGrammar(grammar: Grammar | undefined): void {
-        // do nothing
-    }
-
     getEntryCount(): number {
         return this.entryCount;
     }
@@ -73,161 +69,64 @@ export class XLIFFHandler implements ContentHandler {
         return this.completionPromise;
     }
 
-    initialize(): void {
-        this.stack = new Array();
-        this.inCdData = false;
-    }
-
-    setCatalog(catalog: Catalog): void {
-        // do nothing
-    }
-
-    startDocument(): void {
-        // do nothing
-    }
-
-    endDocument(): void {
-        // Close the write stream when document ends
+    process(document: XliffDocument): void {
+        this.srcLang = document.getSrcLang();
+        this.tgtLang = document.getTrgLang() ?? '';
+        document.getFiles().forEach((file: XliffFile) => {
+            const fileId: string = file.getId();
+            const original: string = file.getOriginal() ?? '';
+            this.collectUnits(file.getEntries()).forEach((unit: XliffUnit) => {
+                this.processUnit(fileId, original, unit);
+            });
+        });
         this.writeStream.end();
     }
 
-    xmlDeclaration(version: string, encoding: string, standalone: string | undefined): void {
-        // do nothing
-    }
-
-    startElement(name: string, atts: Array<XMLAttribute>): void {
-        const element: XMLElement = new XMLElement(name);
-        atts.forEach((att: XMLAttribute) => {
-            element.setAttribute(att);
+    private collectUnits(entries: Array<XliffUnit | XliffGroup>): Array<XliffUnit> {
+        const units: Array<XliffUnit> = [];
+        entries.forEach((entry: XliffUnit | XliffGroup) => {
+            if (entry instanceof XliffGroup) {
+                units.push(...this.collectUnits(entry.getEntries()));
+            } else {
+                units.push(entry);
+            }
         });
-        if ("xliff" === name) {
-            const version: XMLAttribute | undefined = element.getAttribute("version");
-            if (!version || !version.getValue().startsWith("2.")) {
-                throw new Error("Unsupported XLIFF version");
-            }
-            const srcLang: XMLAttribute | undefined = element.getAttribute("srcLang");
-            if (!srcLang) {
-                throw new Error("Missing @srcLang attribute in <xliff>");
-            }
-            const trgLang: XMLAttribute | undefined = element.getAttribute("trgLang");
-            if (!trgLang) {
-                throw new Error("Missing @trgLang attribute in <xliff>");
-            }
-            this.srcLang = srcLang.getValue();
-            this.tgtLang = trgLang.getValue();
-        }
-        if ("file" === name) {
-            const original: XMLAttribute | undefined = element.getAttribute("original");
-            this.original = original ? original.getValue() : '';
-            const id: XMLAttribute | undefined = element.getAttribute("id");
-            if (!id) {
-                throw new Error("Missing @id attribute in <file>");
-            }
-            this.fileId = id.getValue();
-        }
-        if (this.stack.length > 0) {
-            this.stack[this.stack.length - 1].addElement(element);
-        }
-        this.stack.push(element);
+        return units;
     }
 
-    endElement(name: string): void {
-        if ("unit" === name) {
-            const unit: XMLElement = this.stack[this.stack.length - 1];
-            this.processUnit(unit);
-        }
-        this.stack.pop();
-    }
+    private processUnit(fileId: string, original: string, unit: XliffUnit): void {
+        const unitId: string = unit.getId();
+        const items: Array<XliffSegment | XliffIgnorable> = unit.getItems();
+        const segmentItems: Array<XliffSegment> = items.filter(
+            (item): item is XliffSegment => item instanceof XliffSegment
+        );
 
-    internalSubset(declaration: string): void {
-        // do nothing
-    }
+        const segments: SegmentData[] = this.buildSegments(fileId, unitId, unit, segmentItems);
 
-    characters(ch: string): void {
-        if (this.inCdData) {
-            this.currentCData.setValue(this.currentCData.getValue() + ch);
+        if (segmentItems.length === 1) {
+            // A unit with exactly one <segment> has no distinct "whole unit" content:
+            // store one entry, framed as the unit entry, filtered/annotated using the
+            // same criteria (state, skipEmpty, skipUnconfirmed, metadata) a segment
+            // entry would use.
+            if (segments.length === 1) {
+                this.writeUnitEntry(fileId, original, unitId, items, segments[0].metadata, segments[0].segmentId);
+            }
             return;
-        }
-        const textNode: TextNode = new TextNode(ch);
-        // ignore characters outside of elements
-        if (this.stack.length > 0) {
-            this.stack[this.stack.length - 1].addTextNode(textNode);
-        }
-    }
-
-    ignorableWhitespace(ch: string): void {
-        const textNode: TextNode = new TextNode(ch);
-        // ignore characters outside of elements
-        if (this.stack.length > 0) {
-            this.stack[this.stack.length - 1].addTextNode(textNode);
-        }
-    }
-
-    comment(ch: string): void {
-        // do nothing
-    }
-
-    processingInstruction(target: string, data: string): void {
-        // do nothing
-    }
-
-    startCDATA(): void {
-        this.inCdData = true;
-    }
-
-    endCDATA(): void {
-        this.inCdData = false;
-    }
-
-    startDTD(name: string, publicId: string, systemId: string): void {
-        // do nothing
-    }
-
-    endDTD(): void {
-        // do nothing
-    }
-
-    skippedEntity(name: string): void {
-        // do nothing
-    }
-
-    processUnit(unit: XMLElement): void {
-        const id: XMLAttribute | undefined = unit.getAttribute('id');
-        if (!id) {
-            throw new Error('Missing @id attribute in <unit>');
-        }
-        const unitId: string = id.getValue();
-        const segmentElements: XMLElement[] = unit.getChildren().filter((child: XMLElement) => child.getName() === 'segment');
-
-        let segments: SegmentData[] = [];
-        if (segmentElements.length > 0) {
-            segments = this.buildSegments(unitId, unit, segmentElements);
-            if (segments.length === 0) {
-                return;
-            }
-        } else {
-            const fallback: SegmentData | null = this.buildSingleSegment(unitId, unit);
-            if (!fallback) {
-                return;
-            }
-            segments = [fallback];
         }
 
         const segmentCount: number = segments.length;
         segments.forEach((segment: SegmentData, index: number) => {
             const segmentIndex: number = index + 1;
-            this.writeSegmentEntries(unitId, segmentIndex, segmentCount, segment);
+            this.writeSegmentEntries(fileId, original, unitId, segmentIndex, segmentCount, segment);
         });
 
-        if (segmentCount > 1) {
-            this.writeMergedEntry(unitId, segments);
-        }
+        this.writeUnitEntry(fileId, original, unitId, items);
     }
 
-    private buildSegments(unitId: string, unit: XMLElement, segmentElements: XMLElement[]): SegmentData[] {
+    private buildSegments(fileId: string, unitId: string, unit: XliffUnit, segmentItems: Array<XliffSegment>): SegmentData[] {
         const segments: SegmentData[] = [];
-        segmentElements.forEach((segment: XMLElement) => {
-            const processed: SegmentData | null = this.buildSegmentData(unitId, unit, segment);
+        segmentItems.forEach((segment: XliffSegment) => {
+            const processed: SegmentData | null = this.buildSegmentData(fileId, unitId, unit, segment);
             if (processed) {
                 segments.push(processed);
             }
@@ -235,15 +134,15 @@ export class XLIFFHandler implements ContentHandler {
         return segments;
     }
 
-    private buildSegmentData(unitId: string, unit: XMLElement, segment: XMLElement): SegmentData | null {
-        const sourceElement: XMLElement | undefined = segment.getChild('source');
-        const targetElement: XMLElement | undefined = segment.getChild('target');
+    private buildSegmentData(fileId: string, unitId: string, unit: XliffUnit, segment: XliffSegment): SegmentData | null {
+        const sourceElement: XliffSource | undefined = segment.getSource();
+        const targetElement: XliffTarget | undefined = segment.getTarget();
         if (!sourceElement || !targetElement) {
             return null;
         }
 
-        const pureSource: string = Utils.getPureText(sourceElement);
-        const pureTarget: string = Utils.getPureText(targetElement);
+        const pureSource: string = XLIFFHandler.getPureText(sourceElement.getContent());
+        const pureTarget: string = XLIFFHandler.getPureText(targetElement.getContent());
         if (pureSource.trim().length === 0) {
             return null;
         }
@@ -251,8 +150,8 @@ export class XLIFFHandler implements ContentHandler {
             return null;
         }
 
-        const rawState: string | undefined = segment.getAttribute('state')?.getValue();
-        const stateRank: number = this.getStateRank(rawState);
+        const state: TranslationState | undefined = segment.getState() as TranslationState | undefined;
+        const stateRank: number = this.getStateRank(state);
         const minRank: number = this.getStateRankFromOption(this.options.minState);
 
         if (stateRank > 0 && stateRank < minRank) {
@@ -262,9 +161,9 @@ export class XLIFFHandler implements ContentHandler {
             return null;
         }
 
-        const segmentId: string | undefined = segment.getAttribute('id')?.getValue();
+        const segmentId: string | undefined = segment.getId();
         const metadata: EntryMetadata | undefined = this.options.extractMetadata
-            ? this.extractMetadata(unitId, unit, segment, rawState, segmentId)
+            ? this.extractMetadata(fileId, unitId, unit, segment, state, segmentId)
             : undefined;
 
         return {
@@ -277,47 +176,10 @@ export class XLIFFHandler implements ContentHandler {
         };
     }
 
-    private buildSingleSegment(unitId: string, unit: XMLElement): SegmentData | null {
-        const combinedSource: XMLElement = new XMLElement('source');
-        const combinedTarget: XMLElement = new XMLElement('target');
-        unit.getChildren().forEach((child: XMLElement) => {
-            if (child.getName() === 'segment' || child.getName() === 'ignorable') {
-                const source: XMLElement | undefined = child.getChild('source');
-                if (source) {
-                    this.appendElementContent(combinedSource, source);
-                }
-                const target: XMLElement | undefined = child.getChild('target');
-                if (target) {
-                    this.appendElementContent(combinedTarget, target);
-                }
-            }
-        });
-
-        const pureSource: string = Utils.getPureText(combinedSource);
-        const pureTarget: string = Utils.getPureText(combinedTarget);
-        if (pureSource.trim().length === 0) {
-            return null;
-        }
-        if (this.options.skipEmpty && pureTarget.trim().length === 0) {
-            return null;
-        }
-
-        const metadata: EntryMetadata | undefined = this.options.extractMetadata
-            ? this.extractMetadata(unitId, unit, unit)
-            : undefined;
-
-        return {
-            source: combinedSource,
-            target: combinedTarget,
-            pureSource,
-            pureTarget,
-            metadata
-        };
-    }
-
-    private writeSegmentEntries(unitId: string, segmentIndex: number, segmentCount: number, segment: SegmentData): void {
+    private writeSegmentEntries(fileId: string, original: string, unitId: string, segmentIndex: number, segmentCount: number, segment: SegmentData): void {
         const metadata: EntryMetadata | undefined = this.applySegmentPosition(
             segment.metadata,
+            fileId,
             unitId,
             segment.segmentId,
             segmentIndex,
@@ -326,11 +188,11 @@ export class XLIFFHandler implements ContentHandler {
 
         this.writeEntry({
             language: this.srcLang,
-            fileId: this.fileId,
+            fileId,
             unitId,
-            original: this.original,
+            original,
             pureText: segment.pureSource,
-            element: segment.source.toString(),
+            element: segment.source.toElement().toString(),
             segmentIndex,
             segmentCount,
             metadata
@@ -338,11 +200,11 @@ export class XLIFFHandler implements ContentHandler {
 
         this.writeEntry({
             language: this.tgtLang,
-            fileId: this.fileId,
+            fileId,
             unitId,
-            original: this.original,
+            original,
             pureText: segment.pureTarget,
-            element: segment.target.toString(),
+            element: segment.target.toElement().toString(),
             segmentIndex,
             segmentCount,
             metadata
@@ -351,6 +213,7 @@ export class XLIFFHandler implements ContentHandler {
 
     private applySegmentPosition(
         metadata: EntryMetadata | undefined,
+        fileId: string,
         unitId: string,
         explicitSegmentId: string | undefined,
         segmentIndex: number,
@@ -363,13 +226,13 @@ export class XLIFFHandler implements ContentHandler {
         if (!metadata.segment) {
             metadata.segment = {
                 provider: 'xliff',
-                fileId: this.fileId,
+                fileId,
                 unitId,
                 segmentId: explicitSegmentId
             };
         } else {
             metadata.segment.provider = metadata.segment.provider || 'xliff';
-            metadata.segment.fileId = metadata.segment.fileId || this.fileId;
+            metadata.segment.fileId = metadata.segment.fileId || fileId;
             metadata.segment.unitId = metadata.segment.unitId || unitId;
             if (!metadata.segment.segmentId && explicitSegmentId) {
                 metadata.segment.segmentId = explicitSegmentId;
@@ -385,17 +248,19 @@ export class XLIFFHandler implements ContentHandler {
         return metadata;
     }
 
-    private writeMergedEntry(unitId: string, segments: SegmentData[]): void {
-        const mergedSource: XMLElement = new XMLElement('source');
-        const mergedTarget: XMLElement = new XMLElement('target');
+    private writeUnitEntry(
+        fileId: string,
+        original: string,
+        unitId: string,
+        items: Array<XliffSegment | XliffIgnorable>,
+        metadata?: EntryMetadata,
+        segmentId?: string
+    ): void {
+        const mergedSource: XliffSource = this.mergeSource(items);
+        const mergedTarget: XliffTarget = this.mergeTarget(items);
 
-        segments.forEach((segment: SegmentData) => {
-            this.appendElementContent(mergedSource, segment.source);
-            this.appendElementContent(mergedTarget, segment.target);
-        });
-
-        const pureSource: string = Utils.getPureText(mergedSource);
-        const pureTarget: string = Utils.getPureText(mergedTarget);
+        const pureSource: string = XLIFFHandler.getPureText(mergedSource.getContent());
+        const pureTarget: string = XLIFFHandler.getPureText(mergedTarget.getContent());
         if (pureSource.trim().length === 0) {
             return;
         }
@@ -403,27 +268,61 @@ export class XLIFFHandler implements ContentHandler {
             return;
         }
 
+        const segmentCount: number = items.filter((item) => item instanceof XliffSegment).length;
+        const resolvedMetadata: EntryMetadata | undefined = this.applySegmentPosition(metadata, fileId, unitId, segmentId, 0, segmentCount);
+
         this.writeEntry({
             language: this.srcLang,
-            fileId: this.fileId,
+            fileId,
             unitId,
-            original: this.original,
+            original,
             pureText: pureSource,
-            element: mergedSource.toString(),
+            element: mergedSource.toElement().toString(),
             segmentIndex: 0,
-            segmentCount: segments.length
+            segmentCount,
+            metadata: resolvedMetadata
         });
 
         this.writeEntry({
             language: this.tgtLang,
-            fileId: this.fileId,
+            fileId,
             unitId,
-            original: this.original,
+            original,
             pureText: pureTarget,
-            element: mergedTarget.toString(),
+            element: mergedTarget.toElement().toString(),
             segmentIndex: 0,
-            segmentCount: segments.length
+            segmentCount,
+            metadata: resolvedMetadata
         });
+    }
+
+    private mergeSource(items: Array<XliffSegment | XliffIgnorable>): XliffSource {
+        const merged: XliffSource = new XliffSource();
+        items.forEach((item: XliffSegment | XliffIgnorable) => {
+            const source: XliffSource | undefined = item.getSource();
+            if (source) {
+                merged.getContent().push(...source.getContent());
+            }
+        });
+        return merged;
+    }
+
+    private mergeTarget(items: Array<XliffSegment | XliffIgnorable>): XliffTarget {
+        // @order re-sequences a target relative to the source when a unit is resegmented
+        // differently on the target side; items without @order keep their document position.
+        const ordered = items
+            .map((item, index) => ({ item, position: item.getTarget()?.getOrder() ?? (index + 1) }))
+            .filter((entry) => entry.item.getTarget() !== undefined)
+            .sort((a, b) => Number(a.position) - Number(b.position));
+
+        const merged: XliffTarget = new XliffTarget();
+        ordered.forEach(({ item }) => {
+            const target: XliffTarget | undefined = item.getTarget();
+            if (target) {
+                merged.getContent().push(...target.getContent());
+            }
+        });
+        return merged;
     }
 
     private writeEntry(entry: HandlerEntry): void {
@@ -450,53 +349,44 @@ export class XLIFFHandler implements ContentHandler {
         return !!metadata && Object.keys(metadata).length > 0;
     }
 
-    private appendElementContent(target: XMLElement, element: XMLElement): void {
-        const content: XMLNode[] = element.getContent();
-        content.forEach((node: XMLNode) => {
-            if (node instanceof TextNode) {
-                target.addTextNode(node);
-            } else if (node instanceof XMLElement) {
-                target.addElement(node);
-            }
-        });
-    }
-
     private extractMetadata(
+        fileId: string,
         unitId: string,
-        unit: XMLElement,
-        segment: XMLElement,
-        rawState?: string,
+        unit: XliffUnit,
+        segment: XliffSegment,
+        state: TranslationState | undefined,
         segmentId?: string
     ): EntryMetadata {
         const metadata: EntryMetadata = {};
 
-        if (this.isTranslationState(rawState)) {
-            metadata.state = rawState;
+        if (this.isTranslationState(state)) {
+            metadata.state = state;
         }
 
-        const subState: string | undefined = this.readSubState(segment);
+        const subState: string | undefined = segment.getSubState();
         if (subState) {
             metadata.subState = subState;
         }
 
-        this.assignMetadataString(metadata, 'creationDate', this.readAttribute(segment, 'creationDate') || this.readAttribute(unit, 'creationDate'));
-        this.assignMetadataString(metadata, 'creationId', this.readAttribute(segment, 'creationId') || this.readAttribute(unit, 'creationId'));
-        this.assignMetadataString(metadata, 'changeDate', this.readAttribute(segment, 'changeDate') || this.readAttribute(unit, 'changeDate'));
-        this.assignMetadataString(metadata, 'changeId', this.readAttribute(segment, 'changeId') || this.readAttribute(unit, 'changeId'));
-        this.assignMetadataString(metadata, 'creationTool', this.readAttribute(segment, 'creationTool') || this.readAttribute(unit, 'creationTool'));
-        this.assignMetadataString(metadata, 'creationToolVersion', this.readAttribute(segment, 'creationToolVersion') || this.readAttribute(unit, 'creationToolVersion'));
-        this.assignMetadataString(metadata, 'context', this.readAttribute(segment, 'context') || this.readAttribute(unit, 'context'));
+        const unitAttrs: Array<XMLAttribute> = unit.getOtherAttributes();
+        const segmentAttrs: Array<XMLAttribute> = segment.getOtherAttributes();
+
+        this.assignMetadataString(metadata, 'creationDate', this.readOtherAttribute(segmentAttrs, 'creationDate') || this.readOtherAttribute(unitAttrs, 'creationDate'));
+        this.assignMetadataString(metadata, 'creationId', this.readOtherAttribute(segmentAttrs, 'creationId') || this.readOtherAttribute(unitAttrs, 'creationId'));
+        this.assignMetadataString(metadata, 'changeDate', this.readOtherAttribute(segmentAttrs, 'changeDate') || this.readOtherAttribute(unitAttrs, 'changeDate'));
+        this.assignMetadataString(metadata, 'changeId', this.readOtherAttribute(segmentAttrs, 'changeId') || this.readOtherAttribute(unitAttrs, 'changeId'));
+        this.assignMetadataString(metadata, 'creationTool', this.readOtherAttribute(segmentAttrs, 'creationTool') || this.readOtherAttribute(unitAttrs, 'creationTool'));
+        this.assignMetadataString(metadata, 'creationToolVersion', this.readOtherAttribute(segmentAttrs, 'creationToolVersion') || this.readOtherAttribute(unitAttrs, 'creationToolVersion'));
+        this.assignMetadataString(metadata, 'context', this.readOtherAttribute(segmentAttrs, 'context') || this.readOtherAttribute(unitAttrs, 'context'));
 
         const notes: string[] = [];
         this.collectNotes(unit, notes);
-        this.collectNotes(segment, notes);
         if (notes.length > 0) {
             metadata.notes = notes;
         }
 
         const properties: Record<string, string> = {};
         this.collectMetadataProperties(unit, properties);
-        this.collectMetadataProperties(segment, properties);
         if (Object.keys(properties).length > 0) {
             metadata.properties = properties;
             if (!metadata.context) {
@@ -509,7 +399,7 @@ export class XLIFFHandler implements ContentHandler {
 
         metadata.segment = {
             provider: 'xliff',
-            fileId: this.fileId,
+            fileId,
             unitId,
             segmentId
         };
@@ -523,8 +413,8 @@ export class XLIFFHandler implements ContentHandler {
         }
     }
 
-    private readAttribute(element: XMLElement, name: string): string | undefined {
-        const attribute: XMLAttribute | undefined = element.getAttribute(name);
+    private readOtherAttribute(otherAttributes: Array<XMLAttribute>, name: string): string | undefined {
+        const attribute: XMLAttribute | undefined = otherAttributes.find((att: XMLAttribute) => att.getName() === name);
         if (!attribute) {
             return undefined;
         }
@@ -532,73 +422,41 @@ export class XLIFFHandler implements ContentHandler {
         return value && value.length > 0 ? value : undefined;
     }
 
-    private readSubState(segment: XMLElement): string | undefined {
-        const direct: string | undefined = this.readAttribute(segment, 'subState');
-        if (direct) {
-            return direct;
-        }
-        const target: XMLElement | undefined = segment.getChild('target');
-        if (target) {
-            const targetValue: string | undefined = this.readAttribute(target, 'subState');
-            if (targetValue) {
-                return targetValue;
-            }
-        }
-        const source: XMLElement | undefined = segment.getChild('source');
-        if (source) {
-            const sourceValue: string | undefined = this.readAttribute(source, 'subState');
-            if (sourceValue) {
-                return sourceValue;
-            }
-        }
-        return undefined;
-    }
-
-    private collectNotes(element: XMLElement, accumulator: string[]): void {
-        element.getChildren().forEach((child: XMLElement) => {
-            if (child.getName() === 'notes') {
-                child.getChildren().forEach((noteElement: XMLElement) => {
-                    if (noteElement.getName() === 'note') {
-                        const value: string = Utils.getPureText(noteElement).trim();
-                        if (value.length > 0) {
-                            accumulator.push(value);
-                        }
-                    }
-                });
+    private collectNotes(unit: XliffUnit, accumulator: string[]): void {
+        const notes = unit.getNotes()?.getNotes() ?? [];
+        notes.forEach((note) => {
+            const value: string = note.getText().trim();
+            if (value.length > 0) {
+                accumulator.push(value);
             }
         });
     }
 
-    private collectMetadataProperties(element: XMLElement, properties: Record<string, string>): void {
-        element.getChildren().forEach((child: XMLElement) => {
-            const name: string = child.getName();
-            if (name.endsWith('metadata')) {
-                child.getChildren().forEach((metaGroup: XMLElement) => {
-                    if (!metaGroup.getName().endsWith('metaGroup')) {
-                        return;
-                    }
-                    const category: string | undefined = metaGroup.getAttribute('category')?.getValue();
-                    metaGroup.getChildren().forEach((meta: XMLElement) => {
-                        if (!meta.getName().endsWith('meta')) {
-                            return;
-                        }
-                        const typeValue: string | undefined = meta.getAttribute('type')?.getValue();
-                        const key: string = category ? category + ':' + (typeValue || '') : (typeValue || '');
-                        const content: string = Utils.getPureText(meta).trim();
-                        if (key.length > 0 && content.length > 0) {
-                            properties[key] = content;
-                        }
-                    });
-                });
+    private collectMetadataProperties(unit: XliffUnit, properties: Record<string, string>): void {
+        const metaGroups: Array<XliffMetaGroup> = unit.getMetadata()?.getMetaGroups() ?? [];
+        metaGroups.forEach((metaGroup: XliffMetaGroup) => this.collectFromMetaGroup(metaGroup, properties));
+    }
+
+    private collectFromMetaGroup(metaGroup: XliffMetaGroup, properties: Record<string, string>): void {
+        const category: string | undefined = metaGroup.getCategory();
+        metaGroup.getItems().forEach((item: XliffMetaGroup | XliffMeta) => {
+            if (item instanceof XliffMeta) {
+                const key: string = category ? category + ':' + item.getType() : item.getType();
+                const content: string = item.getText().trim();
+                if (key.length > 0 && content.length > 0) {
+                    properties[key] = content;
+                }
+            } else {
+                this.collectFromMetaGroup(item, properties);
             }
         });
     }
 
-    private getStateRank(rawState: string | undefined): number {
-        if (!this.isTranslationState(rawState)) {
+    private getStateRank(state: TranslationState | undefined): number {
+        if (!this.isTranslationState(state)) {
             return 0;
         }
-        return this.getStateRankFromOption(rawState);
+        return this.getStateRankFromOption(state);
     }
 
     private getStateRankFromOption(state: TranslationState | undefined): number {
@@ -626,18 +484,16 @@ export class XLIFFHandler implements ContentHandler {
             || value === 'final';
     }
 
-    getGrammar(): Grammar | undefined {
-        return undefined;
-    }
-
-    getCurrentText(): string {
-        let test: string = '';
-        let content: XMLNode[] = this.stack.length > 0 ? this.stack[this.stack.length - 1].getContent() : [];
-        content.forEach((node: XMLNode) => {
-            if (node instanceof TextNode) {
-                test += node.getValue();
+    private static getPureText(content: Array<InlineContent>): string {
+        let text: string = '';
+        content.forEach((item: InlineContent) => {
+            if (typeof item === 'string') {
+                text += item;
+            } else if (item instanceof XliffPc || item instanceof XliffMrk) {
+                text += XLIFFHandler.getPureText(item.getContent());
             }
+            // ph, sc, ec, sm, em and cp purposely ignored, matching prior pure-text extraction
         });
-        return test;
+        return text;
     }
 }

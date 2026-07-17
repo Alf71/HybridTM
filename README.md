@@ -9,12 +9,13 @@ HybridTM is a semantic translation memory engine that stores bilingual content i
 - Provides `semanticTranslationSearch`, `semanticSearch`, and `concordanceSearch` APIs with metadata-aware filtering
 - Streams data into LanceDB through a JSONL-based batch importer to keep memory usage predictable
 - Prevents duplicate segments by rewriting entries with deterministic IDs (`fileId:unitId:segmentIndex:lang`)
+- Ships a `hybridtm` command-line tool for creating instances, importing files, and enriching XLIFF files with TM match candidates from the shell
 
 Models download automatically the first time you initialize an instance and are cached in the standard Hugging Face directory.
 
 ## Requirements
 
-- Node.js 22 LTS or later
+- Node.js 24 LTS or later
 - npm 11+
 - Disk space for both the LanceDB directory you choose and the embedding model cache
 
@@ -72,12 +73,32 @@ await tm.importSDLTM('./translations/legacy.sdltm');
 
 `semanticTranslationSearch` automatically pairs every source hit with its matching target segment (same `fileId`, `unitId`, and `segmentIndex`), making the output ready for CAT integrations.
 
+## Command-line interface
+
+Installing HybridTM globally also adds a `hybridtm` command:
+
+```bash
+npm install -g hybridtm
+
+hybridtm create -name project -path ./project.lancedb
+hybridtm import -name project -file ./translations/project.xlf
+hybridtm match  -name project -file ./new-content.xlf -output ./new-content.matches.xlf
+hybridtm list
+hybridtm remove -name project
+```
+
+`match` never touches `<target>` — it adds spec Translation Candidates
+(`<mtc:matches>`/`<mtc:match>`) entries to a **new** output file, leaving the
+input untouched. Run `hybridtm <command> -help` for the full flag list, or
+see [05 · Command-Line Interface](docs/05-command-line-interface.md).
+
 ## Documentation
 
 - [01 · Getting Started](docs/01-getting-started.md)
 - [02 · Importing Data](docs/02-importing-data.md)
 - [03 · Search and Filtering](docs/03-search-and-filtering.md)
 - [04 · Sample Scenarios](docs/04-sample-scenarios.md)
+- [05 · Command-Line Interface](docs/05-command-line-interface.md)
 
 Each guide is short and task-oriented, so you can jump directly to the workflow you need.
 
@@ -100,6 +121,7 @@ If you copy `samples/` elsewhere, update `samples/package.json` so the `hybridtm
 ## Project layout
 
 - `ts/` – source files for the library
+- `ts/cli/` – source for the `hybridtm` command-line tool
 - `dist/` – compiled JavaScript and declarations (`npm run build`)
 - `docs/` – task-focused tutorials referenced above
 - `samples/` – standalone TypeScript project with runnable workflows

@@ -12,16 +12,15 @@
 
 import { tmpdir } from "node:os";
 import { join } from 'node:path';
-import { SAXParser } from "typesxml";
+import { XliffDocument, XliffParser } from "typesxliff";
 import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions } from './importOptions.js';
 import { XLIFFHandler } from './xliffHandler.js';
 
 export class XLIFFReader {
 
-    parser: SAXParser;
+    filePath: string;
     tempFilePath: string;
     handler: XLIFFHandler;
-    filePath: string;
     private readonly options: ResolvedImportOptions;
 
     constructor(filePath: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
@@ -33,14 +32,21 @@ export class XLIFFReader {
         const tempFileName = 'xliff_' + Date.now() + '_' + Math.random().toString(36).substring(7) + '.jsonl';
         this.tempFilePath = join(tempDir, tempFileName);
 
-        this.parser = new SAXParser();
         this.handler = new XLIFFHandler(this.tempFilePath, this.options);
-        this.parser.setContentHandler(this.handler);
     }
 
     async parse(): Promise<void> {
         try {
-            this.parser.parseFile(this.filePath);
+            const parser: XliffParser = new XliffParser();
+            parser.parseFile(this.filePath);
+            const document: XliffDocument | undefined = parser.getXliffDocument();
+            if (!document) {
+                throw new Error('Unable to parse XLIFF document');
+            }
+            if (!document.getTrgLang()) {
+                throw new Error('Missing @trgLang attribute in <xliff>');
+            }
+            this.handler.process(document);
             await this.handler.waitForCompletion();
         } catch (error: unknown) {
             throw error instanceof Error ? error : new Error(String(error));
@@ -55,4 +61,3 @@ export class XLIFFReader {
         return this.handler.getEntryCount();
     }
 }
-
