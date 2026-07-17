@@ -1,11 +1,11 @@
 # HybridTM
 
-HybridTM is a semantic translation memory engine that stores bilingual content in LanceDB and scores matches by combining semantic embeddings (Xenova/Transformers.js) with the built-in MatchQuality fuzzy metric.
+HybridTM is a semantic translation memory engine that stores bilingual content in LanceDB and scores matches by combining semantic embeddings (Hugging Face Transformers.js) with the built-in MatchQuality fuzzy metric.
 
 ## Highlights
 
 - Imports XLIFF 2.x, TMX 1.4b, and SDLTM files, preserving metadata, notes, and custom properties
-- Generates semantic vectors with any Xenova-compatible text model (default: `HybridTM.QUALITY_MODEL`, LaBSE)
+- Generates semantic vectors with any Transformers.js-compatible text model (default: `HybridTM.QUALITY_MODEL`, BGE-M3)
 - Provides `semanticTranslationSearch`, `semanticSearch`, and `concordanceSearch` APIs with metadata-aware filtering
 - Streams data into LanceDB through a JSONL-based batch importer to keep memory usage predictable
 - Prevents duplicate segments by rewriting entries with deterministic IDs (`fileId:unitId:segmentIndex:lang`)
@@ -125,12 +125,12 @@ If you copy `samples/` elsewhere, update `samples/package.json` so the `hybridtm
 - `dist/` – compiled JavaScript and declarations (`npm run build`)
 - `docs/` – task-focused tutorials referenced above
 - `samples/` – standalone TypeScript project with runnable workflows
-- `models/` – local cache for pre-downloaded Xenova models (optional)
+- `models/` – local cache for pre-downloaded embedding models (optional)
 
 ## Development
 
 - `npm run build` – compile TypeScript to `dist/`
-- `node dist/tmxtest.js` and `node dist/xlifftest.js` – regression checks for the TMX and XLIFF importers (run after building)
+- The [samples](docs/04-sample-scenarios.md) project doubles as a manual regression check for the importers and search APIs
 
 Contributions should include unit or integration coverage when you touch importer or search logic. Use `HybridTMFactory.removeInstance(name)` to clean up any throwaway databases you create during manual tests.
 

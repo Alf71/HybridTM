@@ -61,8 +61,9 @@ export class CliUtils {
             case undefined:
                 return HybridTM.QUALITY_MODEL;
             default:
-                console.error('Unknown -model value "' + alias + '". Expected speed, quality, or resource.');
-                process.exit(1);
+                // Not one of the presets: treat it as a literal Hugging Face model id
+                // (e.g. "onnx-community/bge-m3-ONNX") to load directly.
+                return alias;
         }
     }
 

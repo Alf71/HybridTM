@@ -73,7 +73,7 @@ hybridtm match -name project -file ./new-content.xlf [-output <path>] [-limit N]
 | `-file` | yes | XLIFF file to enrich |
 | `-output` | no | Output path; defaults to `<file-without-extension>.matches.xlf` next to the input |
 | `-limit` | no | Max candidates per segment (default: 5) |
-| `-similarity` | no | Minimum hybrid match score, 0-100 (default: 60) — see [03 · Search and Filtering](03-search-and-filtering.md) for how this score is computed |
+| `-similarity` | no | Minimum **hybrid** match score, 0-100 (default: 60) — not the same score as the output's `@similarity` attribute, see below |
 | `-all` | no | Consider every segment, not just untranslated ones (default: only segments with no `<target>`, an empty `<target>`, or `state` undefined/`initial`) |
 
 **`match` never modifies `<target>` and never overwrites the input file.**
@@ -84,10 +84,31 @@ Candidates module, `urn:oasis:names:tc:xliff:matches:2.0`) to that unit's
 if it isn't already present. The result is written to a **separate** output
 file for a human or downstream tool to review; nothing is auto-applied.
 
+[03 · Search and Filtering](03-search-and-filtering.md) describes `Match`'s
+three scores (`semantic`, `fuzzy`, `hybridScore()`). The XLIFF spec's
+`<mtc:match>` only has two score attributes, so they map as follows:
+
+| HybridTM score | XLIFF attribute | Meaning per spec |
+| --- | --- | --- |
+| `hybridScore()` (blend of `semantic` + `fuzzy`) | `@matchQuality` | overall rating of the match, free to factor in more than text similarity |
+| `fuzzy` | `@similarity` | source-to-source text similarity only |
+
+The `semantic` score alone isn't written out as its own attribute — it only
+factors into `@matchQuality` via the blend. It can be recovered approximately:
+
+```text
+semantic ≈ 2 × matchQuality − similarity
+```
+
+This is only approximate, not exact: `matchQuality` is `Math.round((semantic + fuzzy) / 2)`
+(`ts/hybridtm.ts`), and that rounding is lossy. The formula above is exact when
+`semantic + fuzzy` is even, and exactly 1 too high when their sum is odd — from
+`matchQuality`/`similarity` alone there's no way to tell which case applies.
+
 ```xml
 <unit id="auth.signin">
   <mtc:matches>
-    <mtc:match origin="project" ref="#/f=f1/u=auth.signin/seg1" similarity="92" type="tm">
+    <mtc:match matchQuality="92" origin="project" ref="#/f=f1/u=auth.signin/seg1" similarity="85" type="tm">
       <source>Sign in</source>
       <target>Iniciar sesión</target>
     </mtc:match>
@@ -99,6 +120,10 @@ file for a human or downstream tool to review; nothing is auto-applied.
 `origin` is the instance name passed via `-name`; `ref` points back at the
 specific `<segment>`/`<ignorable>` the candidate applies to, using the XLIFF
 2.x fragment-identifier syntax (`#/f=<fileId>/u=<unitId>/<segmentId>`).
+Inline codes (`<ph>`, etc.) in the matched source/target are converted to
+XLIFF's own `<ph>`/`<originalData>` representation rather than left as raw
+original-format markup, with `<ph>` ids correlated between `<source>` and
+`<target>` for the same underlying code.
 
 ## `list` and `remove` — manage the registry
 

@@ -11,7 +11,7 @@
  *******************************************************************************/
 
 import { connect, Connection, Table } from '@lancedb/lancedb';
-import { FeatureExtractionPipeline, pipeline, Tensor } from '@xenova/transformers';
+import { FeatureExtractionPipeline, pipeline, Tensor } from '@huggingface/transformers';
 import { Field, FixedSizeList, Float32, Int32, Schema, Utf8 } from 'apache-arrow';
 import { unlinkSync } from 'node:fs';
 import { tmpdir } from "node:os";
@@ -32,9 +32,9 @@ import { XLIFFReader } from './xliffReader.js';
 export class HybridTM {
 
     // OPTIMIZED MODELS
-    static readonly SPEED_MODEL: string = 'Xenova/bge-small-en-v1.5';           // 384-dim, optimized for real-time
-    static readonly QUALITY_MODEL: string = 'Xenova/LaBSE';                     // 768-dim, optimized for accuracy
-    static readonly RESOURCE_MODEL: string = 'Xenova/multilingual-e5-small';    // 384-dim, optimized for modest hardware
+    static readonly SPEED_MODEL: string = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'; // 384-dim, multilingual, optimized for real-time
+    static readonly QUALITY_MODEL: string = 'onnx-community/bge-m3-ONNX';                 // 1024-dim, 100+ languages, optimized for accuracy
+    static readonly RESOURCE_MODEL: string = 'Xenova/multilingual-e5-small';              // 384-dim, multilingual, optimized for modest hardware
 
     private name: string;
     private db: Connection | null = null;
@@ -144,7 +144,10 @@ export class HybridTM {
 
     private async initializeEmbedder(): Promise<void> {
         try {
-            this.embedder = await pipeline('feature-extraction', this.modelName);
+            // dtype must be explicit: some models (e.g. bge-m3) ship an unquantized
+            // model.onnx that requires an external model.onnx_data file Transformers.js
+            // does not reliably fetch/mount; quantized variants are single-file and avoid it.
+            this.embedder = await pipeline('feature-extraction', this.modelName, { dtype: 'q8' });
         } catch (err: unknown) {
             console.error('Error initializing embedder:', err);
             throw err;
