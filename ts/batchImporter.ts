@@ -121,12 +121,11 @@ export class BatchImporter {
             console.log('Total entries imported: ' + totalProcessed.toLocaleString());
             console.log('Total time: ' + minutes + 'm ' + seconds + 's');
             console.log('Average rate: ' + avgRate.toFixed(1) + ' entries/sec');
-
-            // Clean up the temporary file
-            await this.cleanup();
         } catch (err) {
             console.error('Error during batch import:', err);
             throw err;
+        } finally {
+            await this.cleanup();
         }
     }
 

@@ -10,12 +10,24 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
+import { LanguageUtils } from "typesbcp47";
 import { ContentHandler, DOMBuilder, SAXParser, TextNode, XMLDocument, XMLElement, XMLNode } from "typesxml";
 
 export class Utils {
 
+    private static languageCache: Map<string, string | undefined> = new Map<string, string | undefined>();
+
     static replaceQuotes(value: string): string {
         return value.replaceAll("'", "''");
+    }
+
+    static normalizeLanguage(tag: string): string | undefined {
+        if (Utils.languageCache.has(tag)) {
+            return Utils.languageCache.get(tag);
+        }
+        const normalized: string | undefined = LanguageUtils.normalizeCode(tag);
+        Utils.languageCache.set(tag, normalized);
+        return normalized;
     }
 
     static getPureText(element: XMLElement): string {

@@ -40,7 +40,6 @@ Use `ImportOptions` to tune the ingestion pass. All fields are optional; unspeci
 | --- | --- | --- |
 | `minState` | `translated` | Minimum normalized state (`initial`, `translated`, `reviewed`, `final`). Only XLIFF imports honor this filter; TMX entries are always imported. |
 | `skipEmpty` | `true` | Drop segments whose normalized target text is empty or whitespace. |
-| `skipUnconfirmed` | `true` | Skip XLIFF segments that do not carry a `state` attribute (no effect for TMX imports). |
 | `extractMetadata` | `true` | Parse metadata attributes, notes, and custom properties into the LanceDB columns. |
 
 Example:
@@ -49,7 +48,6 @@ Example:
 await tm.importXLIFF(filePath, {
   minState: 'reviewed',
   skipEmpty: true,
-  skipUnconfirmed: false,
   extractMetadata: true
 });
 ```

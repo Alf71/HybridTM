@@ -37,9 +37,11 @@ export class TMXHandler implements ContentHandler {
     private readonly completionPromise: Promise<void>;
     private entryCount: number = 0;
     private readonly options: ResolvedImportOptions;
+    private idCounter: number;
 
     constructor(tempFilePath: string, filename: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
         this.fileId = filename;
+        this.idCounter = Date.now();
         this.writeStream = createWriteStream(tempFilePath, { encoding: 'utf8' });
         this.completionPromise = new Promise<void>((resolve, reject) => {
             this.writeStream.once('finish', resolve);
@@ -92,7 +94,7 @@ export class TMXHandler implements ContentHandler {
             if (tuid) {
                 this.currentTu = tuid.getValue();
             } else {
-                this.currentTu = Date.now().toString();
+                this.currentTu = (this.idCounter++).toString();
             }
             this.currentTuElement = element;
         }
@@ -112,6 +114,10 @@ export class TMXHandler implements ContentHandler {
             if ('' === lang) {
                 throw new Error("Missing @xml:lang or @lang attribute in <tuv>");
             }
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(lang);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + lang + '" in <tuv>');
+            }
             const seg: XMLElement | undefined = tuv.getChild("seg");
             if (!seg) {
                 throw new Error("Missing <seg> child element in <tuv>");
@@ -127,7 +133,7 @@ export class TMXHandler implements ContentHandler {
                 : {};
 
             const jsonEntry: Record<string, unknown> = {
-                language: lang,
+                language: normalizedLang,
                 fileId: this.fileId,
                 original: this.original,
                 unitId: this.currentTu,

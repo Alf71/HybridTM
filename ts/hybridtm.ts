@@ -10,10 +10,10 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
-import { connect, Connection, Table } from '@lancedb/lancedb';
 import { FeatureExtractionPipeline, pipeline, Tensor } from '@huggingface/transformers';
+import { connect, Connection, Table } from '@lancedb/lancedb';
 import { Field, FixedSizeList, Float32, Int32, Schema, Utf8 } from 'apache-arrow';
-import { unlinkSync } from 'node:fs';
+import { existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from "node:os";
 import { join } from 'node:path';
 import { TMReader } from 'sdltm';
@@ -33,7 +33,7 @@ export class HybridTM {
 
     // OPTIMIZED MODELS
     static readonly SPEED_MODEL: string = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'; // 384-dim, multilingual, optimized for real-time
-    static readonly QUALITY_MODEL: string = 'onnx-community/bge-m3-ONNX';                 // 1024-dim, 100+ languages, optimized for accuracy
+    static readonly QUALITY_MODEL: string = 'onnx-community/gte-multilingual-base';       // 768-dim, 70+ languages, optimized for accuracy
     static readonly RESOURCE_MODEL: string = 'Xenova/multilingual-e5-small';              // 384-dim, multilingual, optimized for modest hardware
 
     private name: string;
@@ -41,6 +41,7 @@ export class HybridTM {
     private table: Table | null = null;
     private dbPath: string = '';
     private embedder: FeatureExtractionPipeline | null = null;
+    private embedderPromise: Promise<void> | null = null;
     private modelName: string = '';
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
@@ -142,13 +143,21 @@ export class HybridTM {
         }
     }
 
-    private async initializeEmbedder(): Promise<void> {
+    private initializeEmbedder(): Promise<void> {
+        if (!this.embedderPromise) {
+            this.embedderPromise = this.loadEmbedder();
+        }
+        return this.embedderPromise;
+    }
+
+    private async loadEmbedder(): Promise<void> {
         try {
-            // dtype must be explicit: some models (e.g. bge-m3) ship an unquantized
-            // model.onnx that requires an external model.onnx_data file Transformers.js
-            // does not reliably fetch/mount; quantized variants are single-file and avoid it.
+            // dtype must be explicit: some models ship an unquantized model.onnx that
+            // requires an external model.onnx_data file Transformers.js does not reliably
+            // fetch/mount; quantized variants are single-file and avoid it.
             this.embedder = await pipeline('feature-extraction', this.modelName, { dtype: 'q8' });
         } catch (err: unknown) {
+            this.embedderPromise = null;
             console.error('Error initializing embedder:', err);
             throw err;
         }
@@ -441,9 +450,21 @@ export class HybridTM {
 
     async close(): Promise<void> {
         try {
-            if (this.db) {
-                // LanceDB connections are automatically managed
+            if (this.table) {
+                this.table.close();
+                this.table = null;
             }
+            if (this.db) {
+                this.db.close();
+                this.db = null;
+            }
+            if (this.embedder) {
+                await this.embedder.dispose();
+                this.embedder = null;
+            }
+            this.embedderPromise = null;
+            this.initialized = false;
+            this.initializationPromise = null;
         } catch (err: unknown) {
             console.error('Error closing database:', err);
         }
@@ -458,10 +479,13 @@ export class HybridTM {
         try {
             const table: Table = await this.ensureTable();
 
-            const escapeLiteral = (value: string): string => value.replaceAll("'", "''");
-            const escapedFragment: string = escapeLiteral(textFragment);
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(language);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + language + '"');
+            }
+            const escapedFragment: string = Utils.replaceQuotes(textFragment);
 
-            const whereFragment: string = 'language = ' + '\'' + language + '\'' + ' AND contains(pureText, ' + '\'' + escapedFragment + '\')';
+            const whereFragment: string = 'language = ' + '\'' + normalizedLang + '\'' + ' AND contains(pureText, ' + '\'' + escapedFragment + '\')';
             const fragmentEntries: LangEntry[] = this.hydrateEntries(await table
                 .query()
                 .where(whereFragment)
@@ -493,7 +517,7 @@ export class HybridTM {
 
             for (const descriptor of segmentDescriptors.values()) {
                 const segmentPrefix: string = descriptor.fileId + ':' + descriptor.unitId + ':' + descriptor.segmentIndex + ':';
-                const sanitizedPrefix: string = escapeLiteral(segmentPrefix);
+                const sanitizedPrefix: string = Utils.replaceQuotes(segmentPrefix);
                 const segmentVariants: LangEntry[] = this.hydrateEntries(await table
                     .query()
                     .where('starts_with(id, ' + '\'' + sanitizedPrefix + '\')')
@@ -531,10 +555,14 @@ export class HybridTM {
     async semanticSearch(queryText: string, language: string, limit: number = 10, filters?: MetadataFilter): Promise<SearchResult[]> {
         try {
             const table: Table = await this.ensureTable();
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(language);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + language + '"');
+            }
             const queryEmbedding: number[] = await this.generateEmbedding(queryText);
             const results: LangEntry[] = this.hydrateEntries(await table
                 .vectorSearch(queryEmbedding)
-                .where('language = ' + '\'' + language + '\'')
+                .where('language = ' + '\'' + normalizedLang + '\'')
                 .limit(limit)
                 .toArray());
             const filtered: LangEntry[] = filters
@@ -551,13 +579,22 @@ export class HybridTM {
         try {
             const table: Table = await this.ensureTable();
 
+            const normalizedSrc: string | undefined = Utils.normalizeLanguage(srcLang);
+            if (!normalizedSrc) {
+                throw new Error('Invalid language code "' + srcLang + '"');
+            }
+            const normalizedTgt: string | undefined = Utils.normalizeLanguage(tgtLang);
+            if (!normalizedTgt) {
+                throw new Error('Invalid language code "' + tgtLang + '"');
+            }
+
             // Generate embedding for the search string
             const queryEmbedding: number[] = await this.generateEmbedding(searchStr);
 
             // Get all entries for the source language
             const sourceEntries: LangEntry[] = this.hydrateEntries(await table
                 .vectorSearch(queryEmbedding)
-                .where('language = ' + '\'' + srcLang + '\'')
+                .where('language = ' + '\'' + normalizedSrc + '\'')
                 .toArray());
             const rankedMatches: Array<{ match: Match; score: number; }> = [];
             const sourceCriteria: MetadataFilter | undefined = filters?.source;
@@ -585,7 +622,7 @@ export class HybridTM {
 
                 // Only include matches that meet the minimum similarity threshold
                 if (hybridScore >= similarity) {
-                    const targetEntry: LangEntry | null = await this.findTargetEntry(table, sourceEntry, tgtLang, targetCriteria);
+                    const targetEntry: LangEntry | null = await this.findTargetEntry(table, sourceEntry, normalizedTgt, targetCriteria);
                     if (!targetEntry) {
                         continue;
                     }
@@ -615,7 +652,7 @@ export class HybridTM {
             return rankedMatches.slice(0, limit).map((item) => item.match);
         } catch (err: unknown) {
             console.error('Error performing semantic search with quality:', err);
-            return [];
+            throw err;
         }
     }
 
@@ -636,10 +673,9 @@ export class HybridTM {
 
         const unitPrefix: string = sourceEntry.fileId + ':' + sourceEntry.unitId + ':';
         const sanitizedPrefix: string = Utils.replaceQuotes(unitPrefix);
-        const sanitizedLang: string = Utils.replaceQuotes(tgtLang);
         const unitMatches: LangEntry[] = this.hydrateEntries(await table
             .query()
-            .where('starts_with(id, ' + '\'' + sanitizedPrefix + '\') AND language = ' + '\'' + sanitizedLang + '\'')
+            .where('starts_with(id, ' + '\'' + sanitizedPrefix + '\') AND language = ' + '\'' + tgtLang + '\'')
             .limit(50)
             .toArray());
 
@@ -810,16 +846,19 @@ export class HybridTM {
     ): Promise<void> {
         try {
             const table: Table = await this.ensureTable();
-            const sanitizedFileId: string = Utils.replaceQuotes(fileId);
-            const sanitizedUnitId: string = Utils.replaceQuotes(unitId);
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(lang);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + lang + '"');
+            }
             const safeSegmentIndex: number = typeof segmentIndex === 'number' ? segmentIndex : 0;
             const safeSegmentCount: number = typeof segmentCount === 'number' && segmentCount > 0 ? segmentCount : 1;
-            const entryId: string = this.buildEntryId(sanitizedFileId, sanitizedUnitId, safeSegmentIndex, lang);
+            const entryId: string = this.buildEntryId(fileId, unitId, safeSegmentIndex, normalizedLang);
             const existingEntries: LangEntry[] = this.hydrateEntries(await table
                 .query()
-                .where('id = ' + '\'' + entryId + '\'')
+                .where('id = ' + '\'' + Utils.replaceQuotes(entryId) + '\'')
                 .toArray());
 
+            let existingVector: number[] | undefined;
             if (existingEntries.length > 0) {
                 const existingEntry: LangEntry = existingEntries[0];
                 const contentChanged: boolean = (
@@ -827,9 +866,14 @@ export class HybridTM {
                     existingEntry.element !== element.toString() ||
                     existingEntry.original !== original
                 );
+                const metadataChanged: boolean = JSON.stringify(this.flattenMetadata(existingEntry.metadata))
+                    !== JSON.stringify(this.flattenMetadata(metadata));
 
-                if (!contentChanged) {
+                if (!contentChanged && !metadataChanged) {
                     return;
+                }
+                if (!contentChanged) {
+                    existingVector = existingEntry.vector;
                 }
             }
 
@@ -837,18 +881,20 @@ export class HybridTM {
             let vectorEmbeddings: number[];
             if (embeddings && embeddings.length > 0) {
                 vectorEmbeddings = embeddings;
+            } else if (existingVector && existingVector.length > 0) {
+                vectorEmbeddings = existingVector;
             } else {
                 vectorEmbeddings = await this.generateEmbedding(pureText);
             }
 
             const entry: LangEntry = {
                 id: entryId,
-                language: lang,
+                language: normalizedLang,
                 pureText: pureText,
                 element: element.toString(),
-                fileId: sanitizedFileId,
+                fileId: fileId,
                 original: original,
-                unitId: sanitizedUnitId,
+                unitId: unitId,
                 vector: vectorEmbeddings,
                 segmentIndex: safeSegmentIndex,
                 segmentCount: safeSegmentCount,
@@ -857,7 +903,7 @@ export class HybridTM {
 
             // Delete existing entry first (LanceDB upsert approach)
             try {
-                await table.delete('id = ' + '\'' + entryId + '\'');
+                await table.delete('id = ' + '\'' + Utils.replaceQuotes(entryId) + '\'');
             } catch (deleteErr: unknown) {
                 // Entry might not exist, which is fine
             }
@@ -879,21 +925,23 @@ export class HybridTM {
 
             // Generate embeddings one by one and build LangEntry objects
             for (const entry of entries) {
-                const sanitizedFileId: string = Utils.replaceQuotes(entry.fileId);
-                const sanitizedUnitId: string = Utils.replaceQuotes(entry.unitId);
+                const normalizedLang: string | undefined = Utils.normalizeLanguage(entry.language);
+                if (!normalizedLang) {
+                    throw new Error('Invalid language code "' + entry.language + '"');
+                }
                 const vectorEmbeddings: number[] = await this.generateEmbedding(entry.pureText);
                 const safeSegmentIndex: number = typeof entry.segmentIndex === 'number' ? entry.segmentIndex : 0;
                 const safeSegmentCount: number = typeof entry.segmentCount === 'number' && entry.segmentCount > 0 ? entry.segmentCount : 1;
-                const entryId: string = this.buildEntryId(sanitizedFileId, sanitizedUnitId, safeSegmentIndex, entry.language);
+                const entryId: string = this.buildEntryId(entry.fileId, entry.unitId, safeSegmentIndex, normalizedLang);
 
                 const langEntry: LangEntry = {
                     id: entryId,
-                    language: entry.language,
+                    language: normalizedLang,
                     pureText: entry.pureText,
                     element: entry.element.toString(),
-                    fileId: sanitizedFileId,
+                    fileId: entry.fileId,
                     original: entry.original,
-                    unitId: sanitizedUnitId,
+                    unitId: entry.unitId,
                     vector: vectorEmbeddings,
                     segmentIndex: safeSegmentIndex,
                     segmentCount: safeSegmentCount,
@@ -907,7 +955,7 @@ export class HybridTM {
             // Delete any existing entries with these IDs to prevent duplicates
             // This ensures that if the same file is imported twice, entries are overwritten
             if (entryIds.length > 0) {
-                const idsFilter: string = entryIds.map(id => '\'' + id + '\'').join(',');
+                const idsFilter: string = entryIds.map(id => '\'' + Utils.replaceQuotes(id) + '\'').join(',');
                 try {
                     await table.delete('id IN (' + idsFilter + ')');
                 } catch (deleteErr: unknown) {
@@ -926,20 +974,15 @@ export class HybridTM {
 
     async entryExists(fileId: string, unitId: string, lang: string, segmentIndex: number = 0): Promise<boolean> {
         try {
-            if (!this.table) {
-                await this.initializeDatabase();
+            const table: Table = await this.ensureTable();
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(lang);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + lang + '"');
             }
-
-            if (!this.table) {
-                throw new Error('Failed to initialize database table');
-            }
-
-            const sanitizedFileId: string = Utils.replaceQuotes(fileId);
-            const sanitizedUnitId: string = Utils.replaceQuotes(unitId);
-            const entryId: string = this.buildEntryId(sanitizedFileId, sanitizedUnitId, segmentIndex, lang);
-            const existingEntries: LangEntry[] = this.hydrateEntries(await this.table
+            const entryId: string = this.buildEntryId(fileId, unitId, segmentIndex, normalizedLang);
+            const existingEntries: LangEntry[] = this.hydrateEntries(await table
                 .query()
-                .where('id = ' + '\'' + entryId + '\'')
+                .where('id = ' + '\'' + Utils.replaceQuotes(entryId) + '\'')
                 .toArray());
 
             return existingEntries.length > 0;
@@ -951,20 +994,15 @@ export class HybridTM {
 
     async getLangEntry(fileId: string, unitId: string, lang: string, segmentIndex: number = 0): Promise<LangEntry | null> {
         try {
-            if (!this.table) {
-                await this.initializeDatabase();
+            const table: Table = await this.ensureTable();
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(lang);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + lang + '"');
             }
-
-            if (!this.table) {
-                throw new Error('Failed to initialize database table');
-            }
-
-            const sanitizedFileId: string = Utils.replaceQuotes(fileId);
-            const sanitizedUnitId: string = Utils.replaceQuotes(unitId);
-            const entryId: string = this.buildEntryId(sanitizedFileId, sanitizedUnitId, segmentIndex, lang);
-            const existingEntries: LangEntry[] = this.hydrateEntries(await this.table
+            const entryId: string = this.buildEntryId(fileId, unitId, segmentIndex, normalizedLang);
+            const existingEntries: LangEntry[] = this.hydrateEntries(await table
                 .query()
-                .where('id = ' + '\'' + entryId + '\'')
+                .where('id = ' + '\'' + Utils.replaceQuotes(entryId) + '\'')
                 .toArray());
 
             return existingEntries.length > 0 ? existingEntries[0] : null;
@@ -976,16 +1014,12 @@ export class HybridTM {
 
     async deleteLangEntry(fileId: string, unitId: string, lang: string, segmentIndex: number = 0): Promise<boolean> {
         try {
-            if (!this.table) {
-                await this.initializeDatabase();
+            const table: Table = await this.ensureTable();
+            const normalizedLang: string | undefined = Utils.normalizeLanguage(lang);
+            if (!normalizedLang) {
+                throw new Error('Invalid language code "' + lang + '"');
             }
-            if (!this.table) {
-                throw new Error('Failed to initialize database table');
-            }
-
-            const sanitizedFileId: string = Utils.replaceQuotes(fileId);
-            const sanitizedUnitId: string = Utils.replaceQuotes(unitId);
-            const entryId: string = this.buildEntryId(sanitizedFileId, sanitizedUnitId, segmentIndex, lang);
+            const entryId: string = this.buildEntryId(fileId, unitId, segmentIndex, normalizedLang);
 
             // Check if entry exists first
             const exists: boolean = await this.entryExists(fileId, unitId, lang, segmentIndex);
@@ -994,7 +1028,7 @@ export class HybridTM {
             }
 
             // Delete the entry
-            await this.table.delete('id = \'' + entryId + '\'');
+            await table.delete('id = \'' + Utils.replaceQuotes(entryId) + '\'');
             return true;
         } catch (err: unknown) {
             console.error('Error deleting language entry:', err);
@@ -1038,12 +1072,16 @@ export class HybridTM {
         const productName: string = packageJson.default.productName;
         const version: string = packageJson.default.version;
         const tmReader: TMReader = new TMReader({ 'productName': productName, 'version': version });
-        const data = await tmReader.convert(filePath, tempFilePath);
-        if (data.status !== 'Success') {
-            throw new Error('SDL TM conversion failed for file ' + filePath);
+        try {
+            const data = await tmReader.convert(filePath, tempFilePath);
+            if (data.status !== 'Success') {
+                throw new Error('SDL TM conversion failed for file ' + filePath);
+            }
+            return await this.importTMX(tempFilePath, options);
+        } finally {
+            if (existsSync(tempFilePath)) {
+                unlinkSync(tempFilePath);
+            }
         }
-        const count: number = await this.importTMX(tempFilePath, options);
-        unlinkSync(tempFilePath);
-        return count;
     }
 }

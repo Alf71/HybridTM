@@ -20,7 +20,7 @@ export function usage(): void {
     console.log('  -path    Directory where the instance\'s LanceDB data will live (required)');
     console.log('  -model   Embedding model preset (speed, quality [default], resource), or any');
     console.log('           other Hugging Face feature-extraction model id to load directly');
-    console.log('           (e.g. onnx-community/bge-m3-ONNX)');
+    console.log('           (e.g. onnx-community/gte-multilingual-base)');
 }
 
 export async function runCreateCommand(args: string[]): Promise<void> {

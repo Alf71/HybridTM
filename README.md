@@ -5,7 +5,7 @@ HybridTM is a semantic translation memory engine that stores bilingual content i
 ## Highlights
 
 - Imports XLIFF 2.x, TMX 1.4b, and SDLTM files, preserving metadata, notes, and custom properties
-- Generates semantic vectors with any Transformers.js-compatible text model (default: `HybridTM.QUALITY_MODEL`, BGE-M3)
+- Generates semantic vectors with any Transformers.js-compatible text model (default: `HybridTM.QUALITY_MODEL`, GTE multilingual base)
 - Provides `semanticTranslationSearch`, `semanticSearch`, and `concordanceSearch` APIs with metadata-aware filtering
 - Streams data into LanceDB through a JSONL-based batch importer to keep memory usage predictable
 - Prevents duplicate segments by rewriting entries with deterministic IDs (`fileId:unitId:segmentIndex:lang`)

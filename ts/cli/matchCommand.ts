@@ -11,13 +11,13 @@
  *******************************************************************************/
 
 import { basename, dirname, extname, join } from "node:path";
-import { TextNode, XMLAttribute, XMLElement, XMLNode } from "typesxml";
 import {
-    XliffCp, XliffData, XliffDocument, XliffEc, XliffEm, XliffFile, XliffGroup, XliffIgnorable,
+    XliffCp, XliffData, XliffDocument, XliffEc, XliffEm, XliffGroup,
     XliffMatch, XliffMatches, XliffMrk, XliffOriginalData, XliffParser, XliffPc, XliffPh, XliffSc,
     XliffSegment, XliffSm, XliffSource, XliffTarget, XliffUnit
 } from 'typesxliff';
-import { HybridTM, HybridTMFactory, Match } from '../index.js';
+import { TextNode, XMLAttribute, XMLElement, XMLNode } from "typesxml";
+import { HybridTM, HybridTMFactory, Match, Utils } from '../index.js';
 import { CliUtils } from './cliUtils.js';
 
 const MATCHES_NAMESPACE: string = 'urn:oasis:names:tc:xliff:matches:2.0';
@@ -58,8 +58,8 @@ export async function runMatchCommand(args: string[]): Promise<void> {
     }
 
     const filePath: string = CliUtils.requireExistingFile(rawFile, 'XLIFF file');
-    const limit: number = parsePositiveInt(CliUtils.getFlag(args, '-limit'), DEFAULT_LIMIT, '-limit');
-    const similarity: number = parsePositiveInt(CliUtils.getFlag(args, '-similarity'), DEFAULT_SIMILARITY, '-similarity');
+    const limit: number = parseIntOption(CliUtils.getFlag(args, '-limit'), DEFAULT_LIMIT, '-limit', 1);
+    const similarity: number = parseIntOption(CliUtils.getFlag(args, '-similarity'), DEFAULT_SIMILARITY, '-similarity', 0, 100);
     const processAll: boolean = CliUtils.hasFlag(args, '-all');
     const outputPath: string = resolveOutputPath(CliUtils.getFlag(args, '-output'), filePath);
 
@@ -75,10 +75,18 @@ export async function runMatchCommand(args: string[]): Promise<void> {
         if (!document) {
             CliUtils.fail('Unable to parse "' + filePath + '".');
         }
-        const srcLang: string = document.getSrcLang();
-        const tgtLang: string | undefined = document.getTrgLang();
-        if (!tgtLang) {
+        const rawSrcLang: string = document.getSrcLang();
+        const srcLang: string | undefined = Utils.normalizeLanguage(rawSrcLang);
+        if (!srcLang) {
+            CliUtils.fail('"' + filePath + '" has an invalid @srcLang value "' + rawSrcLang + '".');
+        }
+        const rawTgtLang: string | undefined = document.getTrgLang();
+        if (!rawTgtLang) {
             CliUtils.fail('"' + filePath + '" is missing @trgLang; nothing to match against.');
+        }
+        const tgtLang: string | undefined = Utils.normalizeLanguage(rawTgtLang);
+        if (!tgtLang) {
+            CliUtils.fail('"' + filePath + '" has an invalid @trgLang value "' + rawTgtLang + '".');
         }
 
         let segmentsProcessed: number = 0;
@@ -309,13 +317,14 @@ function resolveOutputPath(explicit: string | undefined, inputPath: string): str
     return join(dirname(inputPath), stem + '.matches.xlf');
 }
 
-function parsePositiveInt(raw: string | undefined, fallback: number, flag: string): number {
+function parseIntOption(raw: string | undefined, fallback: number, flag: string, min: number, max?: number): number {
     if (raw === undefined) {
         return fallback;
     }
     const parsed: number = Number(raw);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-        CliUtils.fail('Invalid ' + flag + ' value "' + raw + '"; expected a positive integer.');
+    if (!Number.isInteger(parsed) || parsed < min || (max !== undefined && parsed > max)) {
+        const range: string = max !== undefined ? 'an integer between ' + min + ' and ' + max : 'an integer of at least ' + min;
+        CliUtils.fail('Invalid ' + flag + ' value "' + raw + '"; expected ' + range + '.');
     }
     return parsed;
 }

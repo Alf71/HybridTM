@@ -19,14 +19,13 @@ type ImportType = 'xliff' | 'tmx' | 'sdltm';
 export function usage(): void {
     console.log('Usage: hybridtm import -name <name> -file <path> [-type xliff|tmx|sdltm]');
     console.log('                        [-minState initial|translated|reviewed|final]');
-    console.log('                        [-keepEmpty] [-keepUnconfirmed] [-noMetadata]');
+    console.log('                        [-keepEmpty] [-noMetadata]');
     console.log();
     console.log('  -name             Instance to import into (required)');
     console.log('  -file             File to import (required)');
     console.log('  -type             Import format; inferred from the file extension when omitted');
     console.log('  -minState         Minimum segment state to import (default: translated)');
     console.log('  -keepEmpty        Import segments with an empty target (default: skipped)');
-    console.log('  -keepUnconfirmed  Import segments with no recognized state (default: skipped)');
     console.log('  -noMetadata       Skip extracting notes/metadata/extension attributes');
 }
 
@@ -96,7 +95,6 @@ function resolveImportType(explicit: string | undefined, filePath: string): Impo
 function buildImportOptions(args: string[]): ImportOptions {
     const options: ImportOptions = {
         skipEmpty: !CliUtils.hasFlag(args, '-keepEmpty'),
-        skipUnconfirmed: !CliUtils.hasFlag(args, '-keepUnconfirmed'),
         extractMetadata: !CliUtils.hasFlag(args, '-noMetadata')
     };
     const minState: string | undefined = CliUtils.getFlag(args, '-minState');

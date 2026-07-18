@@ -55,7 +55,6 @@ hybridtm import -name project -file ./translations/project.xlf [options]
 | `-type` | no | `xliff`, `tmx`, or `sdltm`; inferred from the file extension when omitted |
 | `-minState` | no | Minimum segment state to import (default: `translated`) — see [02 · Importing Data](02-importing-data.md) |
 | `-keepEmpty` | no | Import segments with an empty target (default: skipped) |
-| `-keepUnconfirmed` | no | Import segments with no recognized state (default: skipped) |
 | `-noMetadata` | no | Skip extracting notes/metadata/extension attributes |
 
 These map directly onto `ImportOptions`; the defaults match `DEFAULT_IMPORT_OPTIONS`.

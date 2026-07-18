@@ -19,7 +19,7 @@ export class CliUtils {
 
     static getFlag(args: string[], flag: string): string | undefined {
         const index: number = args.indexOf(flag);
-        if (index !== -1 && index + 1 < args.length) {
+        if (index !== -1 && index + 1 < args.length && !args[index + 1].startsWith('-')) {
             return args[index + 1];
         }
         return undefined;
@@ -62,7 +62,7 @@ export class CliUtils {
                 return HybridTM.QUALITY_MODEL;
             default:
                 // Not one of the presets: treat it as a literal Hugging Face model id
-                // (e.g. "onnx-community/bge-m3-ONNX") to load directly.
+                // (e.g. "onnx-community/gte-multilingual-base") to load directly.
                 return alias;
         }
     }

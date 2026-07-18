@@ -6,7 +6,7 @@ Use this guide to configure a HybridTM workspace, create your first translation 
 
 - Node.js 24 LTS or later
 - npm 11+
-- Network access so the selected embedding model can download on first use (defaults to `HybridTM.QUALITY_MODEL`, a BGE-M3 encoder)
+- Network access so the selected embedding model can download on first use (defaults to `HybridTM.QUALITY_MODEL`, a GTE multilingual base encoder)
 - Enough disk space for the LanceDB database directory you select and the model cache stored under your home directory
 
 ## Install the library

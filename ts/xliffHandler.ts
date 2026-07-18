@@ -19,10 +19,12 @@ import {
 } from "typesxliff";
 import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions, TranslationState } from './importOptions.js';
 import { EntryMetadata } from './langEntry.js';
+import { Utils } from './utils.js';
 
 type InlineContent = string | XliffCp | XliffPh | XliffPc | XliffSc | XliffEc | XliffMrk | XliffSm | XliffEm;
 
 interface SegmentData {
+    segment: XliffSegment;
     source: XliffSource;
     target: XliffTarget;
     pureSource: string;
@@ -70,8 +72,18 @@ export class XLIFFHandler {
     }
 
     process(document: XliffDocument): void {
-        this.srcLang = document.getSrcLang();
-        this.tgtLang = document.getTrgLang() ?? '';
+        const srcLang: string = document.getSrcLang();
+        const normalizedSrc: string | undefined = Utils.normalizeLanguage(srcLang);
+        if (!normalizedSrc) {
+            throw new Error('Invalid @srcLang value "' + srcLang + '"');
+        }
+        this.srcLang = normalizedSrc;
+        const tgtLang: string = document.getTrgLang() ?? '';
+        const normalizedTgt: string | undefined = Utils.normalizeLanguage(tgtLang);
+        if (!normalizedTgt) {
+            throw new Error('Invalid @trgLang value "' + tgtLang + '"');
+        }
+        this.tgtLang = normalizedTgt;
         document.getFiles().forEach((file: XliffFile) => {
             const fileId: string = file.getId();
             const original: string = file.getOriginal() ?? '';
@@ -106,7 +118,7 @@ export class XLIFFHandler {
         if (segmentItems.length === 1) {
             // A unit with exactly one <segment> has no distinct "whole unit" content:
             // store one entry, framed as the unit entry, filtered/annotated using the
-            // same criteria (state, skipEmpty, skipUnconfirmed, metadata) a segment
+            // same criteria (state, skipEmpty, metadata) a segment
             // entry would use.
             if (segments.length === 1) {
                 this.writeUnitEntry(fileId, original, unitId, items, segments[0].metadata, segments[0].segmentId);
@@ -120,7 +132,11 @@ export class XLIFFHandler {
             this.writeSegmentEntries(fileId, original, unitId, segmentIndex, segmentCount, segment);
         });
 
-        this.writeUnitEntry(fileId, original, unitId, items);
+        const surviving: Set<XliffSegment> = new Set(segments.map((segment: SegmentData) => segment.segment));
+        const survivingItems: Array<XliffSegment | XliffIgnorable> = items.filter(
+            (item: XliffSegment | XliffIgnorable) => !(item instanceof XliffSegment) || surviving.has(item)
+        );
+        this.writeUnitEntry(fileId, original, unitId, survivingItems);
     }
 
     private buildSegments(fileId: string, unitId: string, unit: XliffUnit, segmentItems: Array<XliffSegment>): SegmentData[] {
@@ -150,14 +166,15 @@ export class XLIFFHandler {
             return null;
         }
 
-        const state: TranslationState | undefined = segment.getState() as TranslationState | undefined;
-        const stateRank: number = this.getStateRank(state);
-        const minRank: number = this.getStateRankFromOption(this.options.minState);
-
-        if (stateRank > 0 && stateRank < minRank) {
-            return null;
+        const rawState: string | undefined = segment.getState();
+        if (rawState !== undefined && !this.isTranslationState(rawState)) {
+            throw new Error('Invalid @state value "' + rawState + '" in unit "' + unitId + '"');
         }
-        if (stateRank === 0 && this.options.skipUnconfirmed) {
+        const state: TranslationState = rawState === undefined ? 'initial' : rawState;
+        const stateRank: number = this.getStateRank(state);
+        const minRank: number = this.getStateRank(this.options.minState);
+
+        if (stateRank < minRank) {
             return null;
         }
 
@@ -167,6 +184,7 @@ export class XLIFFHandler {
             : undefined;
 
         return {
+            segment,
             source: sourceElement,
             target: targetElement,
             pureSource,
@@ -452,28 +470,16 @@ export class XLIFFHandler {
         });
     }
 
-    private getStateRank(state: TranslationState | undefined): number {
-        if (!this.isTranslationState(state)) {
-            return 0;
-        }
-        return this.getStateRankFromOption(state);
-    }
-
-    private getStateRankFromOption(state: TranslationState | undefined): number {
-        if (!state) {
-            return 0;
-        }
+    private getStateRank(state: TranslationState): number {
         switch (state) {
             case 'initial':
-                return 0;
-            case 'translated':
                 return 1;
-            case 'reviewed':
+            case 'translated':
                 return 2;
-            case 'final':
+            case 'reviewed':
                 return 3;
-            default:
-                return 0;
+            case 'final':
+                return 4;
         }
     }
 
