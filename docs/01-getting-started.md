@@ -6,7 +6,7 @@ Use this guide to configure a HybridTM workspace, create your first translation 
 
 - Node.js 24 LTS or later
 - npm 11+
-- Network access so the selected embedding model can download on first use (defaults to `HybridTM.QUALITY_MODEL`, a GTE multilingual base encoder)
+- Network access so the selected embedding model can download on first use (defaults to `HybridTM.LARGE_MODEL`, a GTE multilingual base encoder — see the [README's "Choosing an embedding model"](../README.md#choosing-an-embedding-model) for the other presets)
 - Enough disk space for the LanceDB database directory you select and the model cache stored under your home directory
 
 ## Install the library
@@ -44,7 +44,7 @@ function getOrCreateInstance(): HybridTM {
   if (existing) {
     return existing;
   }
-  return HybridTMFactory.createInstance(INSTANCE_NAME, DB_PATH, HybridTM.QUALITY_MODEL);
+  return HybridTMFactory.createInstance(INSTANCE_NAME, DB_PATH, HybridTM.LARGE_MODEL);
 }
 ```
 
@@ -99,3 +99,4 @@ Use `tm.concordanceSearch(fragment, language, limit?, filter?)` to retrieve all 
 - Continue with [02 · Importing Data](02-importing-data.md) to configure bulk imports
 - Explore scoring and filtering strategies in [03 · Search and Filtering](03-search-and-filtering.md)
 - Prefer the shell? See [05 · Command-Line Interface](05-command-line-interface.md) for the equivalent `hybridtm` commands
+- Need to export or migrate an instance? See [06 · Backup and Restore](06-backup-and-restore.md)

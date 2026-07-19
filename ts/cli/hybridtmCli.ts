@@ -11,10 +11,12 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
+import { runBackupCommand } from './backupCommand.js';
 import { runCreateCommand } from './createCommand.js';
 import { runImportCommand } from './importCommand.js';
 import { runMatchCommand } from './matchCommand.js';
 import { runListCommand, runRemoveCommand } from './registryCommands.js';
+import { runRestoreCommand } from './restoreCommand.js';
 
 class HybridTMCli {
 
@@ -32,6 +34,10 @@ class HybridTMCli {
                 await runImportCommand(rest);
             } else if (command === 'match') {
                 await runMatchCommand(rest);
+            } else if (command === 'backup') {
+                await runBackupCommand(rest);
+            } else if (command === 'restore') {
+                await runRestoreCommand(rest);
             } else if (command === 'list') {
                 await runListCommand(rest);
             } else if (command === 'remove') {
@@ -57,11 +63,13 @@ class HybridTMCli {
         console.log('Usage: hybridtm <command> [options]');
         console.log();
         console.log('Commands:');
-        console.log('  create   Create a new named TM instance');
-        console.log('  import   Import an XLIFF/TMX/SDLTM file into an instance');
-        console.log('  match    Enrich an XLIFF file with TM match candidates');
-        console.log('  list     List registered instances');
-        console.log('  remove   Delete a registered instance and its data');
+        console.log('  create    Create a new named TM instance');
+        console.log('  import    Import an XLIFF/TMX/SDLTM file into an instance');
+        console.log('  match     Enrich an XLIFF file with TM match candidates');
+        console.log('  backup    Export an instance to a format-agnostic backup XML file');
+        console.log('  restore   Reimport a backup XML file into an existing or new instance');
+        console.log('  list      List registered instances');
+        console.log('  remove    Delete a registered instance and its data');
         console.log();
         console.log('Run "hybridtm <command> -help" for command-specific options.');
     }

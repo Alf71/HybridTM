@@ -17,7 +17,7 @@ import { displayMatches, recreateInstance } from './support/demoEnvironment.js';
 const INSTANCE_NAME: string = 'samples-basic';
 
 async function main(): Promise<void> {
-  const tm: HybridTM = recreateInstance(INSTANCE_NAME, 'basic-demo', HybridTM.QUALITY_MODEL);
+  const tm: HybridTM = recreateInstance(INSTANCE_NAME, 'basic-demo', HybridTM.LARGE_MODEL);
 
   const sourceElement: XMLElement = Utils.buildXMLElement('<source>Hello world</source>');
   const targetElement: XMLElement = Utils.buildXMLElement('<target>Hola mundo</target>');

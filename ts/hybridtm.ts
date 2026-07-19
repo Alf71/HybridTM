@@ -11,13 +11,14 @@
  *******************************************************************************/
 
 import { FeatureExtractionPipeline, pipeline, Tensor } from '@huggingface/transformers';
-import { connect, Connection, Table } from '@lancedb/lancedb';
+import { connect, Connection, Index, Table } from '@lancedb/lancedb';
 import { Field, FixedSizeList, Float32, Int32, Schema, Utf8 } from 'apache-arrow';
-import { existsSync, unlinkSync } from 'node:fs';
+import { createWriteStream, existsSync, unlinkSync, WriteStream } from 'node:fs';
 import { tmpdir } from "node:os";
 import { join } from 'node:path';
 import { TMReader } from 'sdltm';
-import { XMLElement } from 'typesxml';
+import { XMLAttribute, XMLElement } from 'typesxml';
+import { BackupReader } from './backupReader.js';
 import { BatchImporter } from './batchImporter.js';
 import { ImportOptions, resolveImportOptions, TranslationState } from './importOptions.js';
 import { EntryMetadata, LangEntry, SearchResult, SegmentMetadata } from './langEntry.js';
@@ -32,9 +33,9 @@ import { XLIFFReader } from './xliffReader.js';
 export class HybridTM {
 
     // OPTIMIZED MODELS
-    static readonly SPEED_MODEL: string = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'; // 384-dim, multilingual, optimized for real-time
-    static readonly QUALITY_MODEL: string = 'onnx-community/gte-multilingual-base';       // 768-dim, 70+ languages, optimized for accuracy
-    static readonly RESOURCE_MODEL: string = 'Xenova/multilingual-e5-small';              // 384-dim, multilingual, optimized for modest hardware
+    static readonly COMPACT_MODEL: string = 'Xenova/multilingual-e5-small';               // 384-dim, smallest footprint
+    static readonly STANDARD_MODEL: string = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'; // 384-dim, same footprint as compact
+    static readonly LARGE_MODEL: string = 'onnx-community/gte-multilingual-base';         // 768-dim, largest footprint
 
     private name: string;
     private db: Connection | null = null;
@@ -46,7 +47,7 @@ export class HybridTM {
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
 
-    constructor(name: string, filePath: string, modelName: string = HybridTM.QUALITY_MODEL) {
+    constructor(name: string, filePath: string, modelName: string = HybridTM.LARGE_MODEL) {
         this.name = name;
         this.dbPath = filePath;
         this.modelName = modelName;
@@ -134,6 +135,11 @@ export class HybridTM {
 
                 // Create table with the schema
                 this.table = await this.db.createEmptyTable('langEntry', schema);
+
+                // "id" is looked up by exact match constantly (storeLangEntry/storeBatchEntries
+                // dedup, entryExists, getLangEntry, deleteLangEntry, findTargetEntry); without a
+                // scalar index each lookup is a full table scan.
+                await this.table.createIndex('id', { config: Index.btree(), waitTimeoutSeconds: 30 });
             } else {
                 this.table = await this.db.openTable('langEntry');
             }
@@ -591,10 +597,14 @@ export class HybridTM {
             // Generate embedding for the search string
             const queryEmbedding: number[] = await this.generateEmbedding(searchStr);
 
-            // Get all entries for the source language
+            // Fetch a candidate pool well beyond the requested output size: hybrid re-ranking
+            // below can reorder results relative to raw vector distance, so a tight candidate
+            // pool can silently exclude the true best match before re-ranking ever sees it.
+            const candidateLimit: number = Math.max(limit * 5, 50);
             const sourceEntries: LangEntry[] = this.hydrateEntries(await table
                 .vectorSearch(queryEmbedding)
                 .where('language = ' + '\'' + normalizedSrc + '\'')
+                .limit(candidateLimit)
                 .toArray());
             const rankedMatches: Array<{ match: Match; score: number; }> = [];
             const sourceCriteria: MetadataFilter | undefined = filters?.source;
@@ -1083,5 +1093,163 @@ export class HybridTM {
                 unlinkSync(tempFilePath);
             }
         }
+    }
+
+    async restore(filePath: string): Promise<number> {
+        const reader: BackupReader = new BackupReader(filePath);
+        await reader.parse();
+
+        const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
+        await importer.import();
+        return reader.getEntryCount();
+    }
+
+    async backup(outputPath: string): Promise<number> {
+        try {
+            const table: Table = await this.ensureTable();
+            const schema: Schema = await table.schema();
+            const columns: string[] = schema.fields
+                .map((field: Field) => field.name)
+                .filter((name: string) => name !== 'vector');
+
+            const writeStream: WriteStream = createWriteStream(outputPath, { encoding: 'utf8' });
+            const completionPromise: Promise<void> = new Promise<void>((resolve, reject) => {
+                writeStream.once('finish', resolve);
+                writeStream.once('error', reject);
+            });
+
+            const rootElement: XMLElement = new XMLElement('backup');
+            rootElement.setAttribute(new XMLAttribute('name', this.name));
+            rootElement.setAttribute(new XMLAttribute('model', this.modelName));
+            rootElement.setAttribute(new XMLAttribute('date', new Date().toISOString()));
+
+            writeStream.write('<?xml version="1.0" encoding="UTF-8"?>\n');
+            writeStream.write(rootElement.getHead() + '\n');
+
+            let entryCount: number = 0;
+            for await (const batch of table.query().select(columns)) {
+                for (const row of batch) {
+                    const entry: LangEntry = this.hydrateEntry(row as unknown as Record<string, unknown>);
+                    writeStream.write(this.buildBackupEntryElement(entry).toString() + '\n');
+                    entryCount++;
+                }
+            }
+
+            writeStream.write(rootElement.getTail() + '\n');
+            writeStream.end();
+            await completionPromise;
+            return entryCount;
+        } catch (err: unknown) {
+            console.error('Error creating backup:', err);
+            throw err;
+        }
+    }
+
+    private buildBackupEntryElement(entry: LangEntry): XMLElement {
+        const entryElement: XMLElement = new XMLElement('entry');
+        entryElement.setAttribute(new XMLAttribute('id', entry.id));
+        entryElement.setAttribute(new XMLAttribute('language', entry.language));
+        entryElement.setAttribute(new XMLAttribute('fileId', entry.fileId));
+        entryElement.setAttribute(new XMLAttribute('original', entry.original));
+        entryElement.setAttribute(new XMLAttribute('unitId', entry.unitId));
+        entryElement.setAttribute(new XMLAttribute('segmentIndex', entry.segmentIndex.toString()));
+        entryElement.setAttribute(new XMLAttribute('segmentCount', entry.segmentCount.toString()));
+
+        const pureTextElement: XMLElement = new XMLElement('pureText');
+        pureTextElement.addString(entry.pureText);
+        entryElement.addElement(pureTextElement);
+
+        const elementWrapper: XMLElement = new XMLElement('element');
+        elementWrapper.addElement(Utils.buildXMLElement(entry.element));
+        entryElement.addElement(elementWrapper);
+
+        const metadataElement: XMLElement | undefined = this.buildBackupMetadataElement(entry.metadata);
+        if (metadataElement) {
+            entryElement.addElement(metadataElement);
+        }
+
+        return entryElement;
+    }
+
+    private buildBackupMetadataElement(metadata: EntryMetadata | undefined): XMLElement | undefined {
+        if (!metadata || Object.keys(metadata).length === 0) {
+            return undefined;
+        }
+
+        const metadataElement: XMLElement = new XMLElement('metadata');
+        this.appendTextElement(metadataElement, 'state', metadata.state);
+        this.appendTextElement(metadataElement, 'subState', metadata.subState);
+        this.appendTextElement(metadataElement, 'quality', typeof metadata.quality === 'number' ? metadata.quality.toString() : undefined);
+        this.appendTextElement(metadataElement, 'creationDate', metadata.creationDate);
+        this.appendTextElement(metadataElement, 'creationId', metadata.creationId);
+        this.appendTextElement(metadataElement, 'changeDate', metadata.changeDate);
+        this.appendTextElement(metadataElement, 'changeId', metadata.changeId);
+        this.appendTextElement(metadataElement, 'creationTool', metadata.creationTool);
+        this.appendTextElement(metadataElement, 'creationToolVersion', metadata.creationToolVersion);
+        this.appendTextElement(metadataElement, 'context', metadata.context);
+        this.appendTextElement(metadataElement, 'usageCount', typeof metadata.usageCount === 'number' ? metadata.usageCount.toString() : undefined);
+        this.appendTextElement(metadataElement, 'lastUsageDate', metadata.lastUsageDate);
+
+        if (metadata.notes && metadata.notes.length > 0) {
+            const notesElement: XMLElement = new XMLElement('notes');
+            metadata.notes.forEach((note: string) => {
+                const noteElement: XMLElement = new XMLElement('note');
+                noteElement.addString(note);
+                notesElement.addElement(noteElement);
+            });
+            metadataElement.addElement(notesElement);
+        }
+
+        if (metadata.properties && Object.keys(metadata.properties).length > 0) {
+            const propertiesElement: XMLElement = new XMLElement('properties');
+            Object.entries(metadata.properties).forEach(([key, value]: [string, string]) => {
+                const propertyElement: XMLElement = new XMLElement('property');
+                propertyElement.setAttribute(new XMLAttribute('name', key));
+                propertyElement.addString(value);
+                propertiesElement.addElement(propertyElement);
+            });
+            metadataElement.addElement(propertiesElement);
+        }
+
+        if (metadata.segment) {
+            const segment: SegmentMetadata = metadata.segment;
+            const segmentElement: XMLElement = new XMLElement('segment');
+            if (segment.provider) {
+                segmentElement.setAttribute(new XMLAttribute('provider', segment.provider));
+            }
+            if (segment.fileHash) {
+                segmentElement.setAttribute(new XMLAttribute('fileHash', segment.fileHash));
+            }
+            if (segment.fileId) {
+                segmentElement.setAttribute(new XMLAttribute('fileId', segment.fileId));
+            }
+            if (segment.unitId) {
+                segmentElement.setAttribute(new XMLAttribute('unitId', segment.unitId));
+            }
+            if (segment.segmentId) {
+                segmentElement.setAttribute(new XMLAttribute('segmentId', segment.segmentId));
+            }
+            if (segment.segmentKey) {
+                segmentElement.setAttribute(new XMLAttribute('segmentKey', segment.segmentKey));
+            }
+            if (typeof segment.segmentIndex === 'number') {
+                segmentElement.setAttribute(new XMLAttribute('segmentIndex', segment.segmentIndex.toString()));
+            }
+            if (typeof segment.segmentCount === 'number') {
+                segmentElement.setAttribute(new XMLAttribute('segmentCount', segment.segmentCount.toString()));
+            }
+            metadataElement.addElement(segmentElement);
+        }
+
+        return metadataElement;
+    }
+
+    private appendTextElement(parent: XMLElement, name: string, value: string | undefined): void {
+        if (!value) {
+            return;
+        }
+        const child: XMLElement = new XMLElement(name);
+        child.addString(value);
+        parent.addElement(child);
     }
 }

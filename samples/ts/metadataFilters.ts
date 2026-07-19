@@ -17,7 +17,7 @@ import { displayMatches, recreateInstance, resolveDataPath } from './support/dem
 const INSTANCE_NAME: string = 'samples-filters';
 
 async function main(): Promise<void> {
-  const tm: HybridTM = recreateInstance(INSTANCE_NAME, 'filters-demo', HybridTM.QUALITY_MODEL);
+  const tm: HybridTM = recreateInstance(INSTANCE_NAME, 'filters-demo', HybridTM.LARGE_MODEL);
 
   await tm.importXLIFF(resolveDataPath('demo.xlf'));
   await tm.importTMX(resolveDataPath('demo.tmx'));

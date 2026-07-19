@@ -14,13 +14,14 @@ import { HybridTM, HybridTMFactory } from '../index.js';
 import { CliUtils } from './cliUtils.js';
 
 export function usage(): void {
-    console.log('Usage: hybridtm create -name <name> -path <dir> [-model speed|quality|resource|<model id>]');
+    console.log('Usage: hybridtm create -name <name> -path <dir> [-model compact|standard|large|<model id>]');
     console.log();
     console.log('  -name    Name to register the new instance under (required)');
     console.log('  -path    Directory where the instance\'s LanceDB data will live (required)');
-    console.log('  -model   Embedding model preset (speed, quality [default], resource), or any');
+    console.log('  -model   Embedding model preset (compact, standard, large [default]), or any');
     console.log('           other Hugging Face feature-extraction model id to load directly');
-    console.log('           (e.g. onnx-community/gte-multilingual-base)');
+    console.log('           (e.g. onnx-community/gte-multilingual-base). See the README section');
+    console.log('           "Choosing an embedding model" for guidance on which preset to pick.');
 }
 
 export async function runCreateCommand(args: string[]): Promise<void> {

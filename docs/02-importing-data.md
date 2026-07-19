@@ -9,7 +9,7 @@ import path from 'node:path';
 import { HybridTM, HybridTMFactory } from 'hybridtm';
 
 const tm = HybridTMFactory.getInstance('docs-basic')
-  ?? HybridTMFactory.createInstance('docs-basic', path.resolve('.data/docs-basic.lancedb'), HybridTM.QUALITY_MODEL);
+  ?? HybridTMFactory.createInstance('docs-basic', path.resolve('.data/docs-basic.lancedb'), HybridTM.LARGE_MODEL);
 
 await tm.importXLIFF(path.resolve('translations/demo.xlf'));
 ```
@@ -70,6 +70,6 @@ Downstream searches can filter on these values without reparsing the original fi
 - Large corpora import faster when you keep the default batch size (1000 entries) and run imports on SSD-backed storage
 - You can monitor progress through the console logs emitted by `BatchImporter`
 - Temporary JSONL files are deleted automatically after the import finishes; if an import fails, delete leftover files before retrying
-- The selected embedding model dictates import time—choose `HybridTM.SPEED_MODEL` for quick smoke tests and switch to `HybridTM.QUALITY_MODEL` for production-quality scores
+- The selected embedding model dictates import time; see the README's [Choosing an embedding model](../README.md#choosing-an-embedding-model) for how the `compact`/`standard`/`large` presets compare on speed and match accuracy
 
 Continue with [03 · Search and Filtering](03-search-and-filtering.md) once your database is populated.

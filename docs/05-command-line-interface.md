@@ -29,14 +29,14 @@ hybridtm import -help
 ## `create` — register a named instance
 
 ```bash
-hybridtm create -name project -path ./project.lancedb [-model speed|quality|resource]
+hybridtm create -name project -path ./project.lancedb [-model compact|standard|large|<model id>]
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
 | `-name` | yes | Name to register the instance under (used later by every other command) |
 | `-path` | yes | Directory where the instance's LanceDB data will live; created if missing |
-| `-model` | no | Embedding preset: `speed` (`HybridTM.SPEED_MODEL`), `quality` (default, `HybridTM.QUALITY_MODEL`), or `resource` (`HybridTM.RESOURCE_MODEL`) |
+| `-model` | no | Embedding preset — `compact` (`HybridTM.COMPACT_MODEL`), `standard` (`HybridTM.STANDARD_MODEL`), or `large` (default, `HybridTM.LARGE_MODEL`) — or any other Hugging Face `feature-extraction`-compatible model id to load directly. See the README's [Choosing an embedding model](../README.md#choosing-an-embedding-model) for which preset fits your languages. |
 
 The instance is registered in the same `instances.json` registry `HybridTMFactory`
 uses (see [01 · Getting Started](01-getting-started.md)), so instances created
@@ -124,6 +124,42 @@ XLIFF's own `<ph>`/`<originalData>` representation rather than left as raw
 original-format markup, with `<ph>` ids correlated between `<source>` and
 `<target>` for the same underlying code.
 
+## `backup` — export an instance to a backup XML file
+
+```bash
+hybridtm backup -name project -file ./project-backup.xml
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `-name` | yes | Instance to back up |
+| `-file` | yes | Output XML file path |
+
+The backup file is format-agnostic and never carries vector/embedding data;
+see [06 · Backup and Restore](06-backup-and-restore.md) for the file format
+and library-level details.
+
+## `restore` — reimport a backup XML file
+
+```bash
+hybridtm restore -file ./project-backup.xml -name project
+hybridtm restore -file ./project-backup.xml -create -path ./project-v2.lancedb [-name project-v2] [-model compact|standard|large|<model id>]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `-file` | yes | Backup XML file to restore |
+| `-name` | append mode only* | Existing instance to restore into (append/upsert); with `-create`, the name for the new instance |
+| `-create` | no | Create a fresh instance before restoring, instead of appending to an existing one |
+| `-path` | with `-create` | Directory for the new instance's LanceDB data |
+| `-model` | no | Embedding preset for the new instance (`compact`, `standard`, `large`, or a literal Hugging Face model id) |
+
+\* Without `-create`, `-name` is required and selects the existing instance to
+append into. With `-create`, `-name` and `-model` are both optional — if
+omitted, the name and/or model recorded in the backup file's root element are
+used, so `hybridtm restore -file backup.xml -create -path ./new.lancedb`
+alone recreates an instance matching the original name and model.
+
 ## `list` and `remove` — manage the registry
 
 ```bash
@@ -145,3 +181,5 @@ useful if a name contains spaces and needs quoting (`-name "My Project"`).
   programmatic API if you need finer control than the CLI exposes
 - [04 · Sample Scenarios](04-sample-scenarios.md) has runnable TypeScript
   versions of the same workflows
+- [06 · Backup and Restore](06-backup-and-restore.md) documents the backup
+  file format and the `backup`/`restore` library API

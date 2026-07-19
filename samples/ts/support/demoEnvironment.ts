@@ -26,7 +26,7 @@ function removeIfExists(name: string): void {
   }
 }
 
-export function recreateInstance(name: string, subDir: string, modelName: string = HybridTM.QUALITY_MODEL): HybridTM {
+export function recreateInstance(name: string, subDir: string, modelName: string = HybridTM.LARGE_MODEL): HybridTM {
   removeIfExists(name);
   const dbPath: string = path.join(SAMPLE_STORAGE_ROOT, subDir);
   console.log('Preparing instance "' + name + '" with model "' + modelName + '". The first run will download embeddings if they are not cached.');

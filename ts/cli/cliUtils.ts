@@ -53,13 +53,13 @@ export class CliUtils {
 
     static resolveModelName(alias: string | undefined): string {
         switch (alias) {
-            case 'speed':
-                return HybridTM.SPEED_MODEL;
-            case 'resource':
-                return HybridTM.RESOURCE_MODEL;
-            case 'quality':
+            case 'compact':
+                return HybridTM.COMPACT_MODEL;
+            case 'standard':
+                return HybridTM.STANDARD_MODEL;
+            case 'large':
             case undefined:
-                return HybridTM.QUALITY_MODEL;
+                return HybridTM.LARGE_MODEL;
             default:
                 // Not one of the presets: treat it as a literal Hugging Face model id
                 // (e.g. "onnx-community/gte-multilingual-base") to load directly.

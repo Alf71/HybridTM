@@ -10,6 +10,8 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
+export { BackupHandler } from './backupHandler.js';
+export { BackupReader } from './backupReader.js';
 export { BatchImporter } from './batchImporter.js';
 export { HybridTM } from './hybridtm.js';
 export { HybridTMFactory, HybridTMInstanceMetadata } from './hybridtmFactory.js';
