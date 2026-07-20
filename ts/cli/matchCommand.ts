@@ -120,7 +120,7 @@ export async function runMatchCommand(args: string[]): Promise<void> {
                     }
                     segmentsWithMatches++;
                     totalMatches += results.length;
-                    const ref: string = '#/f=' + fileId + '/u=' + unitId + (item.getId() ? '/' + item.getId() : '');
+                    const ref: string = item.getId() ? '#' + item.getId() : '#/f=' + fileId + '/u=' + unitId;
                     results.forEach((match: Match) => unitMatches.push(buildXliffMatch(ref, match, dataCounter)));
                 }
                 if (unitMatches.length > 0) {

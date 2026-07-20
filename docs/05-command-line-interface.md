@@ -107,7 +107,7 @@ This is only approximate, not exact: `matchQuality` is `Math.round((semantic + f
 ```xml
 <unit id="auth.signin">
   <mtc:matches>
-    <mtc:match matchQuality="92" origin="project" ref="#/f=f1/u=auth.signin/seg1" similarity="85" type="tm">
+    <mtc:match matchQuality="92" origin="project" ref="#seg1" similarity="85" type="tm">
       <source>Sign in</source>
       <target>Iniciar sesión</target>
     </mtc:match>
@@ -117,8 +117,10 @@ This is only approximate, not exact: `matchQuality` is `Math.round((semantic + f
 ```
 
 `origin` is the instance name passed via `-name`; `ref` points back at the
-specific `<segment>`/`<ignorable>` the candidate applies to, using the XLIFF
-2.x fragment-identifier syntax (`#/f=<fileId>/u=<unitId>/<segmentId>`).
+specific `<segment>`/`<ignorable>` the candidate applies to. Since the match
+always applies to a segment in its own enclosing `<unit>`, `ref` uses the XLIFF
+2.x relative fragment-identifier syntax (`#<segmentId>`) rather than the full
+`#/f=<fileId>/u=<unitId>/<segmentId>` path.
 Inline codes (`<ph>`, etc.) in the matched source/target are converted to
 XLIFF's own `<ph>`/`<originalData>` representation rather than left as raw
 original-format markup, with `<ph>` ids correlated between `<source>` and
