@@ -14,7 +14,7 @@ import { extname } from "node:path";
 import { HybridTM, HybridTMFactory, ImportOptions, TranslationState } from '../index.js';
 import { CliUtils } from './cliUtils.js';
 
-type ImportType = 'xliff' | 'tmx' | 'sdltm';
+export type ImportType = 'xliff' | 'tmx' | 'sdltm';
 
 export function usage(): void {
     console.log('Usage: hybridtm import -name <name> -file <path> [-type xliff|tmx|sdltm]');
@@ -43,7 +43,6 @@ export async function runImportCommand(args: string[]): Promise<void> {
     }
 
     const filePath: string = CliUtils.requireExistingFile(rawFile, 'Import file');
-    const type: ImportType = resolveImportType(CliUtils.getFlag(args, '-type'), filePath);
     const options: ImportOptions = buildImportOptions(args);
 
     const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
@@ -52,18 +51,8 @@ export async function runImportCommand(args: string[]): Promise<void> {
     }
 
     try {
-        let count: number;
-        switch (type) {
-            case 'xliff':
-                count = await tm.importXLIFF(filePath, options);
-                break;
-            case 'tmx':
-                count = await tm.importTMX(filePath, options);
-                break;
-            case 'sdltm':
-                count = await tm.importSDLTM(filePath, options);
-                break;
-        }
+        const type: ImportType = resolveImportType(CliUtils.getFlag(args, '-type'), filePath);
+        const count: number = await importFile(tm, filePath, type, options);
         console.log('Imported ' + count + ' entries from ' + filePath + ' into "' + name + '".');
     } catch (error: unknown) {
         CliUtils.fail(error instanceof Error ? error.message : String(error));
@@ -72,12 +61,23 @@ export async function runImportCommand(args: string[]): Promise<void> {
     }
 }
 
-function resolveImportType(explicit: string | undefined, filePath: string): ImportType {
+export async function importFile(tm: HybridTM, filePath: string, type: ImportType, options: ImportOptions): Promise<number> {
+    switch (type) {
+        case 'xliff':
+            return await tm.importXLIFF(filePath, options);
+        case 'tmx':
+            return await tm.importTMX(filePath, options);
+        case 'sdltm':
+            return await tm.importSDLTM(filePath, options);
+    }
+}
+
+export function resolveImportType(explicit: string | undefined, filePath: string): ImportType {
     if (explicit === 'xliff' || explicit === 'tmx' || explicit === 'sdltm') {
         return explicit;
     }
     if (explicit !== undefined) {
-        CliUtils.fail('Unknown -type value "' + explicit + '". Expected xliff, tmx, or sdltm.');
+        throw new Error('Unknown import type "' + explicit + '". Expected xliff, tmx, or sdltm.');
     }
     const ext: string = extname(filePath).toLowerCase();
     if (ext === '.xlf' || ext === '.xliff') {
@@ -89,7 +89,7 @@ function resolveImportType(explicit: string | undefined, filePath: string): Impo
     if (ext === '.sdltm') {
         return 'sdltm';
     }
-    CliUtils.fail('Could not infer import type from "' + filePath + '". Pass -type explicitly.');
+    throw new Error('Could not infer import type from "' + filePath + '". Pass an explicit type.');
 }
 
 function buildImportOptions(args: string[]): ImportOptions {
@@ -107,6 +107,6 @@ function buildImportOptions(args: string[]): ImportOptions {
     return options;
 }
 
-function isTranslationState(value: string): value is TranslationState {
+export function isTranslationState(value: string): value is TranslationState {
     return value === 'initial' || value === 'translated' || value === 'reviewed' || value === 'final';
 }

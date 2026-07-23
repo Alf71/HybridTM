@@ -11,21 +11,28 @@
  *******************************************************************************/
 
 import { IncomingMessage, request } from "node:http";
+import { CliUtils } from './cliUtils.js';
 
-const PORT: number = 8050;
+const DEFAULT_PORT: number = 8050;
 
 export function usage(): void {
-    console.log('Usage: hybridtm stop');
+    console.log('Usage: hybridtm stop [-port <number>]');
     console.log();
-    console.log('  Stops the HybridTM HTTP server running on port ' + PORT + '.');
+    console.log('  Stops the HybridTM HTTP server (default port: ' + DEFAULT_PORT + ').');
+    console.log('  Pass -port if the server was started with a non-default -port.');
 }
 
 export async function runStopCommand(args: string[]): Promise<void> {
+    if (CliUtils.hasFlag(args, '-help')) {
+        usage();
+        return;
+    }
+    const port: number = CliUtils.parseIntFlag(args, '-port', DEFAULT_PORT, 1, 65535);
     const body: string = JSON.stringify({ command: 'stop' });
     const response: unknown = await new Promise<unknown>((resolve, reject) => {
         const req = request({
             hostname: '127.0.0.1',
-            port: PORT,
+            port: port,
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -46,7 +53,7 @@ export async function runStopCommand(args: string[]): Promise<void> {
         });
         req.on('error', (error: NodeJS.ErrnoException) => {
             if (error.code === 'ECONNREFUSED') {
-                reject(new Error('HybridTM server is not running on port ' + PORT + '.'));
+                reject(new Error('HybridTM server is not running on port ' + port + '.'));
             } else {
                 reject(error);
             }

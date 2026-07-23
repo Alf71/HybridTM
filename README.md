@@ -11,6 +11,7 @@ HybridTM is a semantic translation memory engine that stores bilingual content i
 - Prevents duplicate segments by rewriting entries with deterministic IDs (`fileId:unitId:segmentIndex:lang`)
 - Backs up any instance to a single format-agnostic XML file and restores it into an existing or brand-new instance, optionally under a different embedding model
 - Ships a `hybridtm` command-line tool for creating instances, importing files, backing up/restoring data, and enriching XLIFF files with TM match candidates from the shell
+- Runs as a JSON-over-HTTP server too (`hybridtm serve`, or embed `HybridTMServer` directly), for CAT tool and editor integrations that want to keep an instance and its loaded model open across many requests, with ticketed handling for long-running imports and matches, and a `storeXliffUnit` command for persisting a single confirmed unit as the user works
 
 Models download automatically the first time you initialize an instance and are cached in the standard Hugging Face directory.
 
@@ -122,6 +123,7 @@ see [05 · Command-Line Interface](docs/05-command-line-interface.md).
 - [04 · Sample Scenarios](docs/04-sample-scenarios.md)
 - [05 · Command-Line Interface](docs/05-command-line-interface.md)
 - [06 · Backup and Restore](docs/06-backup-and-restore.md)
+- [07 · HTTP Server](docs/07-http-server.md)
 
 Each guide is short and task-oriented, so you can jump directly to the workflow you need.
 

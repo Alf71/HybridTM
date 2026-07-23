@@ -12,21 +12,35 @@
 
 import { ChildProcess, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { CliUtils } from './cliUtils.js';
 
-const PORT: number = 8050;
+const DEFAULT_PORT: number = 8050;
+const LOCALHOST: string = '127.0.0.1';
+const ALL_INTERFACES: string = '0.0.0.0';
 
 export function usage(): void {
-    console.log('Usage: hybridtm serve');
+    console.log('Usage: hybridtm serve [-port <number>] [-network]');
     console.log();
-    console.log('  Starts the HybridTM HTTP server on port ' + PORT + '.');
+    console.log('  Starts the HybridTM HTTP server.');
+    console.log();
+    console.log('  -port      Port to listen on (default: ' + DEFAULT_PORT + ')');
+    console.log('  -network   Accept connections from other machines on the network');
+    console.log('             (default: only this machine). The server has no');
+    console.log('             authentication, so only use this on a trusted network.');
 }
 
 export async function runServeCommand(args: string[]): Promise<void> {
+    if (CliUtils.hasFlag(args, '-help')) {
+        usage();
+        return;
+    }
+    const port: number = CliUtils.parseIntFlag(args, '-port', DEFAULT_PORT, 1, 65535);
+    const host: string = CliUtils.hasFlag(args, '-network') ? ALL_INTERFACES : LOCALHOST;
     const serverPath: string = fileURLToPath(new URL('../server/hybridtmServerMain.js', import.meta.url));
-    const child: ChildProcess = spawn(process.execPath, [serverPath], {
+    const child: ChildProcess = spawn(process.execPath, [serverPath, String(port), host], {
         detached: true,
         stdio: 'ignore'
     });
     child.unref();
-    console.log('HybridTM server starting on port ' + PORT);
+    console.log('HybridTM server starting on ' + host + ':' + port);
 }

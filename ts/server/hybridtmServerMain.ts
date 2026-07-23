@@ -12,7 +12,9 @@
 
 import { HybridTMServer } from './hybridtmServer.js';
 
-const PORT: number = 8050;
+const DEFAULT_PORT: number = 8050;
+const port: number = process.argv[2] ? Number(process.argv[2]) : DEFAULT_PORT;
+const host: string | undefined = process.argv[3];
 
-const server: HybridTMServer = new HybridTMServer(PORT);
+const server: HybridTMServer = host ? new HybridTMServer(port, host) : new HybridTMServer(port);
 server.start();

@@ -15,6 +15,7 @@ export { BackupReader } from './backupReader.js';
 export { BatchImporter } from './batchImporter.js';
 export { HybridTM } from './hybridtm.js';
 export { HybridTMFactory, HybridTMInstanceMetadata } from './hybridtmFactory.js';
+export { HybridTMServer } from './server/hybridtmServer.js';
 export type { ImportOptions, TranslationState } from './importOptions.js';
 export { LangEntry, SearchResult } from './langEntry.js';
 export { Match } from './match.js';

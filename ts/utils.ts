@@ -10,8 +10,11 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { LanguageUtils } from "typesbcp47";
-import { ContentHandler, DOMBuilder, SAXParser, TextNode, XMLDocument, XMLElement, XMLNode } from "typesxml";
+import { ContentHandler, DOMBuilder, SAXParser, TextNode, XMLAttribute, XMLDocument, XMLElement, XMLNode } from "typesxml";
 
 export class Utils {
 
@@ -46,6 +49,35 @@ export class Utils {
             }
         });
         return text;
+    }
+
+    static buildXliffDocument(unitXml: string, fileId: string, original: string, srcLang: string, tgtLang: string): string {
+        const unitElement: XMLElement = Utils.buildXMLElement(unitXml);
+        if (unitElement.getName() !== 'unit') {
+            throw new Error('Expected a <unit> element, found <' + unitElement.getName() + '>');
+        }
+
+        const fileElement: XMLElement = new XMLElement('file');
+        fileElement.setAttribute(new XMLAttribute('id', fileId));
+        fileElement.setAttribute(new XMLAttribute('original', original));
+        fileElement.addElement(unitElement);
+
+        const xliffElement: XMLElement = new XMLElement('xliff');
+        xliffElement.setAttribute(new XMLAttribute('xmlns', 'urn:oasis:names:tc:xliff:document:2.0'));
+        xliffElement.setAttribute(new XMLAttribute('version', '2.1'));
+        xliffElement.setAttribute(new XMLAttribute('srcLang', srcLang));
+        xliffElement.setAttribute(new XMLAttribute('trgLang', tgtLang));
+        xliffElement.addElement(fileElement);
+
+        return xliffElement.toString();
+    }
+
+    static writeXliffDocument(unitXml: string, fileId: string, original: string, srcLang: string, tgtLang: string): string {
+        const xliffDocument: string = Utils.buildXliffDocument(unitXml, fileId, original, srcLang, tgtLang);
+        const tempFileName: string = 'unit_' + Date.now() + '_' + Math.random().toString(36).substring(7) + '.xlf';
+        const tempFilePath: string = join(tmpdir(), tempFileName);
+        writeFileSync(tempFilePath, xliffDocument, { encoding: 'utf-8' });
+        return tempFilePath;
     }
 
     static buildXMLElement(str: string): XMLElement {

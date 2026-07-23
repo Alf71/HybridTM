@@ -22,8 +22,8 @@ import { CliUtils } from './cliUtils.js';
 
 const MATCHES_NAMESPACE: string = 'urn:oasis:names:tc:xliff:matches:2.0';
 const DEFAULT_PREFIX: string = 'mtc';
-const DEFAULT_LIMIT: number = 5;
-const DEFAULT_SIMILARITY: number = 60;
+export const DEFAULT_LIMIT: number = 5;
+export const DEFAULT_SIMILARITY: number = 60;
 
 const PLACEHOLDER_TAGS: ReadonlySet<string> = new Set(['ph', 'bpt', 'ept', 'it', 'sc', 'ec', 'cp']);
 
@@ -42,6 +42,13 @@ export function usage(): void {
     console.log();
     console.log('Never modifies <target>. Adds spec Translation Candidates module');
     console.log('(<mtc:matches>/<mtc:match>) entries and writes the result to a new file.');
+}
+
+export interface MatchResult {
+    segmentsProcessed: number;
+    segmentsWithMatches: number;
+    totalMatches: number;
+    outputPath: string;
 }
 
 export async function runMatchCommand(args: string[]): Promise<void> {
@@ -69,84 +76,90 @@ export async function runMatchCommand(args: string[]): Promise<void> {
     }
 
     try {
-        const parser: XliffParser = new XliffParser();
-        parser.parseFile(filePath);
-        const document: XliffDocument | undefined = parser.getXliffDocument();
-        if (!document) {
-            CliUtils.fail('Unable to parse "' + filePath + '".');
-        }
-        const rawSrcLang: string = document.getSrcLang();
-        const srcLang: string | undefined = Utils.normalizeLanguage(rawSrcLang);
-        if (!srcLang) {
-            CliUtils.fail('"' + filePath + '" has an invalid @srcLang value "' + rawSrcLang + '".');
-        }
-        const rawTgtLang: string | undefined = document.getTrgLang();
-        if (!rawTgtLang) {
-            CliUtils.fail('"' + filePath + '" is missing @trgLang; nothing to match against.');
-        }
-        const tgtLang: string | undefined = Utils.normalizeLanguage(rawTgtLang);
-        if (!tgtLang) {
-            CliUtils.fail('"' + filePath + '" has an invalid @trgLang value "' + rawTgtLang + '".');
-        }
-
-        let segmentsProcessed: number = 0;
-        let segmentsWithMatches: number = 0;
-        let totalMatches: number = 0;
-        let usedModule: boolean = false;
-
-        for (const file of document.getFiles()) {
-            const fileId: string = file.getId();
-            for (const unit of collectUnits(file.getEntries())) {
-                const unitMatches: Array<XliffMatch> = [];
-                const unitId: string = unit.getId();
-                // shared so <ph>/<data> ids stay unique across the whole unit
-                const dataCounter: { value: number } = { value: 0 };
-                for (const item of unit.getItems()) {
-                    if (!(item instanceof XliffSegment)) {
-                        continue;
-                    }
-                    if (!processAll && !needsMatches(item)) {
-                        continue;
-                    }
-                    const source: XliffSource | undefined = item.getSource();
-                    const pureSource: string = source ? getPureText(source.getContent()) : '';
-                    if (pureSource.trim().length === 0) {
-                        continue;
-                    }
-                    segmentsProcessed++;
-                    const results: Array<Match> = dedupeMatches(await tm.semanticTranslationSearch(pureSource, srcLang, tgtLang, similarity, limit));
-                    if (results.length === 0) {
-                        continue;
-                    }
-                    segmentsWithMatches++;
-                    totalMatches += results.length;
-                    const ref: string = item.getId() ? '#' + item.getId() : '#/f=' + fileId + '/u=' + unitId;
-                    results.forEach((match: Match) => unitMatches.push(buildXliffMatch(ref, match, dataCounter)));
-                }
-                if (unitMatches.length > 0) {
-                    const matches: XliffMatches = new XliffMatches();
-                    matches.setNamespacePrefix(DEFAULT_PREFIX);
-                    unitMatches.forEach((match: XliffMatch) => matches.addMatch(match));
-                    unit.setMatches(matches);
-                    usedModule = true;
-                }
-            }
-        }
-
-        if (usedModule) {
-            declareMatchesNamespace(document);
-        }
-
-        document.writeDocument(outputPath, true);
-        console.log('Segments processed: ' + segmentsProcessed);
-        console.log('Segments with matches: ' + segmentsWithMatches);
-        console.log('Total match candidates: ' + totalMatches);
-        console.log('Output: ' + outputPath);
+        const result: MatchResult = await matchXliffFile(tm, filePath, outputPath, limit, similarity, processAll);
+        console.log('Segments processed: ' + result.segmentsProcessed);
+        console.log('Segments with matches: ' + result.segmentsWithMatches);
+        console.log('Total match candidates: ' + result.totalMatches);
+        console.log('Output: ' + result.outputPath);
     } catch (error: unknown) {
         CliUtils.fail(error instanceof Error ? error.message : String(error));
     } finally {
         await tm.close();
     }
+}
+
+export async function matchXliffFile(tm: HybridTM, filePath: string, outputPath: string, limit: number, similarity: number, processAll: boolean): Promise<MatchResult> {
+    // shared with the server's "match" command, so both drive this exact enrichment logic
+    const parser: XliffParser = new XliffParser();
+    parser.parseFile(filePath);
+    const document: XliffDocument | undefined = parser.getXliffDocument();
+    if (!document) {
+        throw new Error('Unable to parse "' + filePath + '".');
+    }
+    const rawSrcLang: string = document.getSrcLang();
+    const srcLang: string | undefined = Utils.normalizeLanguage(rawSrcLang);
+    if (!srcLang) {
+        throw new Error('"' + filePath + '" has an invalid @srcLang value "' + rawSrcLang + '".');
+    }
+    const rawTgtLang: string | undefined = document.getTrgLang();
+    if (!rawTgtLang) {
+        throw new Error('"' + filePath + '" is missing @trgLang; nothing to match against.');
+    }
+    const tgtLang: string | undefined = Utils.normalizeLanguage(rawTgtLang);
+    if (!tgtLang) {
+        throw new Error('"' + filePath + '" has an invalid @trgLang value "' + rawTgtLang + '".');
+    }
+
+    let segmentsProcessed: number = 0;
+    let segmentsWithMatches: number = 0;
+    let totalMatches: number = 0;
+    let usedModule: boolean = false;
+
+    for (const file of document.getFiles()) {
+        const fileId: string = file.getId();
+        for (const unit of collectUnits(file.getEntries())) {
+            const unitMatches: Array<XliffMatch> = [];
+            const unitId: string = unit.getId();
+            // shared so <ph>/<data> ids stay unique across the whole unit
+            const dataCounter: { value: number } = { value: 0 };
+            for (const item of unit.getItems()) {
+                if (!(item instanceof XliffSegment)) {
+                    continue;
+                }
+                if (!processAll && !needsMatches(item)) {
+                    continue;
+                }
+                const source: XliffSource | undefined = item.getSource();
+                const pureSource: string = source ? getPureText(source.getContent()) : '';
+                if (pureSource.trim().length === 0) {
+                    continue;
+                }
+                segmentsProcessed++;
+                const results: Array<Match> = dedupeMatches(await tm.semanticTranslationSearch(pureSource, srcLang, tgtLang, similarity, limit));
+                if (results.length === 0) {
+                    continue;
+                }
+                segmentsWithMatches++;
+                totalMatches += results.length;
+                const ref: string = item.getId() ? '#' + item.getId() : '#/f=' + fileId + '/u=' + unitId;
+                results.forEach((match: Match) => unitMatches.push(buildXliffMatch(ref, match, dataCounter)));
+            }
+            if (unitMatches.length > 0) {
+                const matches: XliffMatches = new XliffMatches();
+                matches.setNamespacePrefix(DEFAULT_PREFIX);
+                unitMatches.forEach((match: XliffMatch) => matches.addMatch(match));
+                unit.setMatches(matches);
+                usedModule = true;
+            }
+        }
+    }
+
+    if (usedModule) {
+        declareMatchesNamespace(document);
+    }
+
+    document.writeDocument(outputPath, true);
+    return { segmentsProcessed, segmentsWithMatches, totalMatches, outputPath };
 }
 
 function dedupeMatches(matches: Array<Match>): Array<Match> {
@@ -308,7 +321,7 @@ function declareMatchesNamespace(document: XliffDocument): void {
     }
 }
 
-function resolveOutputPath(explicit: string | undefined, inputPath: string): string {
+export function resolveOutputPath(explicit: string | undefined, inputPath: string): string {
     if (explicit) {
         return CliUtils.resolvePath(explicit);
     }

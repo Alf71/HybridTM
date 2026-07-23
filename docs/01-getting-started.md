@@ -100,3 +100,4 @@ Use `tm.concordanceSearch(fragment, language, limit?, filter?)` to retrieve all 
 - Explore scoring and filtering strategies in [03 · Search and Filtering](03-search-and-filtering.md)
 - Prefer the shell? See [05 · Command-Line Interface](05-command-line-interface.md) for the equivalent `hybridtm` commands
 - Need to export or migrate an instance? See [06 · Backup and Restore](06-backup-and-restore.md)
+- Building an editor or CAT tool integration? See [07 · HTTP Server](07-http-server.md) for a long-lived, JSON-over-HTTP alternative to opening/closing an instance per call
