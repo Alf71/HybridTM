@@ -17,6 +17,8 @@ import { runImportCommand } from './importCommand.js';
 import { runMatchCommand } from './matchCommand.js';
 import { runListCommand, runRemoveCommand } from './registryCommands.js';
 import { runRestoreCommand } from './restoreCommand.js';
+import { runServeCommand } from './serveCommand.js';
+import { runStopCommand } from './stopCommand.js';
 
 class HybridTMCli {
 
@@ -42,6 +44,10 @@ class HybridTMCli {
                 await runListCommand(rest);
             } else if (command === 'remove') {
                 await runRemoveCommand(rest);
+            } else if (command === 'serve') {
+                await runServeCommand(rest);
+            } else if (command === 'stop') {
+                await runStopCommand(rest);
             } else if (command === '-help' || command === '--help') {
                 this.usage();
                 process.exit(0);
@@ -70,6 +76,8 @@ class HybridTMCli {
         console.log('  restore   Reimport a backup XML file into an existing or new instance');
         console.log('  list      List registered instances');
         console.log('  remove    Delete a registered instance and its data');
+        console.log('  serve     Start the HybridTM HTTP server');
+        console.log('  stop      Stop the HybridTM HTTP server');
         console.log();
         console.log('Run "hybridtm <command> -help" for command-specific options.');
     }

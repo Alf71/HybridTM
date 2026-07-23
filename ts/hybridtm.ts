@@ -1095,6 +1095,10 @@ export class HybridTM {
         }
     }
 
+    // ============================
+    // BACKUP AND RESTORE METHODS
+    // ============================
+
     async restore(filePath: string): Promise<number> {
         const reader: BackupReader = new BackupReader(filePath);
         await reader.parse();

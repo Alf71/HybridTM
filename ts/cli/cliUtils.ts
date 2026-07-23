@@ -29,6 +29,19 @@ export class CliUtils {
         return args.includes(flag);
     }
 
+    static parseIntFlag(args: string[], flag: string, fallback: number, min: number, max?: number): number {
+        const raw: string | undefined = CliUtils.getFlag(args, flag);
+        if (raw === undefined) {
+            return fallback;
+        }
+        const parsed: number = Number(raw);
+        if (!Number.isInteger(parsed) || parsed < min || (max !== undefined && parsed > max)) {
+            const range: string = max !== undefined ? 'an integer between ' + min + ' and ' + max : 'an integer of at least ' + min;
+            CliUtils.fail('Invalid ' + flag + ' value "' + raw + '"; expected ' + range + '.');
+        }
+        return parsed;
+    }
+
     static resolvePath(rawPath: string): string {
         let expanded: string = rawPath;
         if (expanded.startsWith('~')) {

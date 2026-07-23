@@ -177,6 +177,25 @@ Pass `-force` to skip the prompt for scripts/automation. If the name doesn't
 match a registered instance, the error lists the names that are registered —
 useful if a name contains spaces and needs quoting (`-name "My Project"`).
 
+## `serve` and `stop`: run the HTTP server
+
+```bash
+hybridtm serve [-port <number>] [-network]
+hybridtm stop [-port <number>]
+```
+
+| Flag | Required | Description |
+| --- | --- | --- |
+| `-port` | no | Port to listen on (default: `8050`) |
+| `-network` | no | Accept connections from other machines on the network (default: only this machine) |
+
+`serve` starts a local JSON-over-HTTP server for long-lived integrations
+that want to keep an instance open across many requests instead of paying
+the load cost per CLI invocation. `stop` shuts it down; pass the same
+`-port` you started it with if it wasn't the default. See
+[07 · HTTP Server](07-http-server.md) for the full request/response
+protocol.
+
 ## Next steps
 
 - [01 · Getting Started](01-getting-started.md) covers the equivalent
@@ -185,3 +204,6 @@ useful if a name contains spaces and needs quoting (`-name "My Project"`).
   versions of the same workflows
 - [06 · Backup and Restore](06-backup-and-restore.md) documents the backup
   file format and the `backup`/`restore` library API
+- [07 · HTTP Server](07-http-server.md) documents the `serve`/`stop`
+  JSON HTTP server, for editors and CAT tools that want a long-lived
+  instance instead of one-shot CLI calls
