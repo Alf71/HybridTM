@@ -123,7 +123,7 @@ export class TMXHandler implements ContentHandler {
                 throw new Error("Missing <seg> child element in <tuv>");
             }
             const pureText: string = Utils.getPureText(seg);
-            if (pureText.trim().length === 0 && this.options.skipEmpty) {
+            if (seg.getContent().length === 0) {
                 this.stack.pop();
                 return;
             }

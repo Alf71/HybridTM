@@ -31,6 +31,8 @@ const matches = await tm.semanticTranslationSearch(
 
 The optional `TranslationSearchFilters` argument lets you require metadata on the source, target, or both sides. When no target segment exists for the same unit, the candidate is dropped. `states` filters rely on the normalized `state` metadata saved during XLIFF imports; TMX entries do not carry a state value, so those filters have no effect on TMX-only data.
 
+If you pass a `source` filter but no `target` filter, the same criteria are applied to the target segment as well. If you want to filter only the source side, pass an explicit empty `target: {}` filter.
+
 ## Monolingual semantic search
 
 Use `semanticSearch` to inspect the contents of a single language without pairing it with translations:
@@ -66,6 +68,33 @@ variations.forEach((languageMap, index) => {
 ```
 
 Concordance search aggregates all language variants for the units that contain a fragment in the requested language, which is useful for terminology reviews.
+
+## Filtering on metadata
+
+The `TranslationSearchFilters` object has `source` and `target` sides. Each side can use any combination of the filter fields listed below. The example below searches for translations that are semantically close, come from an XLIFF import, and are already curated:
+
+```typescript
+const matches = await tm.semanticTranslationSearch(
+  'Save settings',
+  'en',
+  'es',
+  50,
+  5,
+  {
+    source: {
+      contextIncludes: ['ui.settings'],
+      provider: 'xliff'
+    },
+    target: {
+      states: ['reviewed', 'final'],
+      minState: 'reviewed',
+      requiredProperties: { product: 'mobile-app' }
+    }
+  }
+);
+```
+
+Here the source side must come from an XLIFF import and its stored context must contain `ui.settings`. The target side must be in state `reviewed` or `final`, and must carry a `product` property equal to `mobile-app`. Candidates that fail any of these filters are dropped before ranking.
 
 ## Metadata filters reference
 

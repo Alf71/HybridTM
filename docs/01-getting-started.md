@@ -95,7 +95,7 @@ Use `tm.concordanceSearch(fragment, language, limit?, filter?)` to retrieve all 
 
 ## Next steps
 
-- Study the runnable counterpart in [samples/src/basicWorkflow.ts](samples/src/basicWorkflow.ts)
+- Study the runnable counterpart in [samples/ts/basicWorkflow.ts](/samples/ts/basicWorkflow.ts)
 - Continue with [02 · Importing Data](02-importing-data.md) to configure bulk imports
 - Explore scoring and filtering strategies in [03 · Search and Filtering](03-search-and-filtering.md)
 - Prefer the shell? See [05 · Command-Line Interface](05-command-line-interface.md) for the equivalent `hybridtm` commands

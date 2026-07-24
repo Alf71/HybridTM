@@ -113,7 +113,7 @@ export class Utils {
     static dedupeMatches(matches: Array<Match>): Array<Match> {
         const seen: Set<string> = new Set();
         return matches.filter((match: Match) => {
-            const key: string = Utils.extractElementText(match.source).trim() + ' ' + Utils.extractElementText(match.target).trim();
+            const key: string = Utils.extractElementText(match.source).trim() + '\u00A0' + Utils.extractElementText(match.target).trim();
             if (seen.has(key)) {
                 return false;
             }

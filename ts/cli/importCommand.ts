@@ -21,13 +21,12 @@ export class ImportCommand {
     static usage(): void {
         console.log('Usage: hybridtm import -name <name> -file <path> [-type xliff|tmx|sdltm]');
         console.log('                        [-minState initial|translated|reviewed|final]');
-        console.log('                        [-keepEmpty] [-noMetadata]');
+        console.log('                        [-noMetadata]');
         console.log();
         console.log('  -name             Instance to import into (required)');
         console.log('  -file             File to import (required)');
         console.log('  -type             Import format; inferred from the file extension when omitted');
         console.log('  -minState         Minimum segment state to import (default: translated)');
-        console.log('  -keepEmpty        Import segments with an empty target (default: skipped)');
         console.log('  -noMetadata       Skip extracting notes/metadata/extension attributes');
     }
 
@@ -100,7 +99,6 @@ export class ImportCommand {
 
     private static buildImportOptions(args: string[]): ImportOptions {
         const options: ImportOptions = {
-            skipEmpty: !CliUtils.hasFlag(args, '-keepEmpty'),
             extractMetadata: !CliUtils.hasFlag(args, '-noMetadata')
         };
         const minState: string | undefined = CliUtils.getFlag(args, '-minState');

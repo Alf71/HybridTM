@@ -14,7 +14,6 @@ export type TranslationState = 'initial' | 'translated' | 'reviewed' | 'final';
 
 export interface ImportOptions {
     minState?: TranslationState;
-    skipEmpty?: boolean;
     extractMetadata?: boolean;
 }
 
@@ -22,7 +21,6 @@ export type ResolvedImportOptions = Required<ImportOptions>;
 
 export const DEFAULT_IMPORT_OPTIONS: ResolvedImportOptions = {
     minState: 'translated',
-    skipEmpty: true,
     extractMetadata: true
 };
 

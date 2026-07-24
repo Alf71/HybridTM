@@ -39,37 +39,24 @@ Use `ImportOptions` to tune the ingestion pass. All fields are optional; unspeci
 | Option | Default | Description |
 | --- | --- | --- |
 | `minState` | `translated` | Minimum normalized state (`initial`, `translated`, `reviewed`, `final`). Only XLIFF imports honor this filter; TMX entries are always imported. |
-| `skipEmpty` | `true` | Drop segments whose normalized target text is empty or whitespace. |
 | `extractMetadata` | `true` | Parse metadata attributes, notes, and custom properties into the LanceDB columns. |
+
+Empty XLIFF targets are skipped automatically, unless the segment's `@state` is `final` — an empty target with `state="final"` is treated as an intentional translation choice and is imported. TMX entries with an empty `<seg>` are always skipped.
 
 Example:
 
 ```typescript
 await tm.importXLIFF(filePath, {
   minState: 'reviewed',
-  skipEmpty: true,
   extractMetadata: true
 });
 ```
-
-## Metadata extracted from files
-
-When `extractMetadata` is enabled, HybridTM captures the following fields per segment:
-
-- `state`, `subState`, and normalized `matchQuality`/`quality`
-- Lifecycle attributes (`creationDate`, `creationId`, `changeDate`, `changeId`, `creationTool`, `creationToolVersion`)
-- `context` attribute or the first custom property that contains "context"
-- `<note>` values aggregated into `notes`
-- Custom metadata (`properties`) assembled from `<metadata>`/`<metaGroup>` blocks
-- Segment provenance (file ID, unit ID, explicit segment ID/index/count)
-
-Downstream searches can filter on these values without reparsing the original files.
 
 ## Performance checklist
 
 - Large corpora import faster when you keep the default batch size (1000 entries) and run imports on SSD-backed storage
 - You can monitor progress through the console logs emitted by `BatchImporter`
 - Temporary JSONL files are deleted automatically after the import finishes; if an import fails, delete leftover files before retrying
-- The selected embedding model dictates import time; see the README's [Choosing an embedding model](../README.md#choosing-an-embedding-model) for how the `compact`/`standard`/`large` presets compare on speed and match accuracy
+- The selected embedding model dictates import time; see the README's [Choosing an embedding model](../README.md#choosing-an-embedding-model) for how the `compact`/`standard`/`large` presets are expected to compare on speed and match accuracy
 
 Continue with [03 · Search and Filtering](03-search-and-filtering.md) once your database is populated.

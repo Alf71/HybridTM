@@ -27,11 +27,11 @@ npm install
 
 | Script | Command | Description |
 | --- | --- | --- |
-| Basic workflow | `npm run dev:basic` | Shows how to create an instance, insert two bilingual segments manually, and request matches. See [samples/src/basicWorkflow.ts](samples/src/basicWorkflow.ts). |
-| Import files | `npm run dev:import` | Imports the bundled XLIFF/TMX snippets from `samples/data`, then performs a semantic translation search. See [samples/src/importFiles.ts](samples/src/importFiles.ts). |
-| Filters & concordance | `npm run dev:filters` | Demonstrates metadata-aware searches (`semanticSearch`, `semanticTranslationSearch` with filters, and `concordanceSearch`). See [samples/src/metadataFilters.ts](samples/src/metadataFilters.ts). |
+| Basic workflow | `npm run dev:basic` | Shows how to create an instance, insert two bilingual segments manually, and request matches. See [samples/ts/basicWorkflow.ts](/samples/ts/basicWorkflow.ts). |
+| Import files | `npm run dev:import` | Imports the bundled XLIFF/TMX snippets from `samples/data`, then performs a semantic translation search. See [samples/ts/importFiles.ts](/samples/ts/importFiles.ts). |
+| Filters & concordance | `npm run dev:filters` | Demonstrates metadata-aware searches (`semanticSearch`, `semanticTranslationSearch` with filters, and `concordanceSearch`). See [samples/ts/metadataFilters.ts](/samples/ts/metadataFilters.ts). |
 
-Each script writes its LanceDB files under `samples/.hybridtm-samples/<scenario>.lancedb`. Delete that folder to reset the environment.
+Each script writes its LanceDB files under `samples/hybridtm-samples/<scenario>.lancedb`. Delete that folder to reset the environment.
 
 ## Sample data
 

@@ -40,6 +40,7 @@ export class HybridTMServer {
     private server: Server | null = null;
     private instances: Map<string, HybridTM> = new Map();
     private jobs: Map<string, JobRecord> = new Map();
+    private stopAfterResponse: boolean = false;
 
     constructor(port: number, host: string = '127.0.0.1') {
         this.port = port;
@@ -107,7 +108,11 @@ export class HybridTMServer {
         const result: unknown = await this.processRequest(request);
         const data: string = JSON.stringify(result);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(data);
+        res.end(data, () => {
+            if (this.stopAfterResponse) {
+                this.stop().catch(() => { });
+            }
+        });
     }
 
     private async processRequest(request: any): Promise<unknown> {
@@ -154,14 +159,14 @@ export class HybridTMServer {
         if (command === 'batchTranslate') {
             return this.handleBatchTranslate(request);
         }
-        return request;
+        return { status: 'failed', reason: 'Unknown command' };
     }
 
     private handleStop(): unknown {
         if (!this.server) {
             return { status: 'failed', reason: 'Server is not running' };
         }
-        this.stop().catch(() => { });
+        this.stopAfterResponse = true;
         return { status: 'success', payload: {} };
     }
 
@@ -216,7 +221,6 @@ export class HybridTMServer {
             return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
         }
         const options: ImportOptions = {
-            skipEmpty: request.keepEmpty !== true,
             extractMetadata: request.noMetadata !== true
         };
         if (typeof request.minState === 'string') {
@@ -252,8 +256,8 @@ export class HybridTMServer {
         const rawOutput: any = request.output;
         const outputPath: string = MatchCommand.resolveOutputPath(typeof rawOutput === 'string' && rawOutput.trim().length > 0 ? rawOutput : undefined, filePath);
         const similarity: any = request.similarity;
-        if (typeof similarity !== 'number') {
-            return { status: 'failed', reason: 'Missing similarity parameter' };
+        if (typeof similarity !== 'number' || !Number.isInteger(similarity) || similarity < 0 || similarity > 100) {
+            return { status: 'failed', reason: 'Invalid similarity parameter; expected an integer between 0 and 100' };
         }
         const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
 
@@ -466,10 +470,11 @@ export class HybridTMServer {
             return { status: 'failed', reason: 'Missing units, srcLang or tgtLang parameter' };
         }
         const similarity: any = request.similarity;
-        if (typeof similarity !== 'number') {
-            return { status: 'failed', reason: 'Missing similarity parameter' };
+        if (typeof similarity !== 'number' || !Number.isInteger(similarity) || similarity < 0 || similarity > 100) {
+            return { status: 'failed', reason: 'Invalid similarity parameter; expected an integer between 0 and 100' };
         }
         const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
+        const fileId: string | undefined = typeof request.fileId === 'string' ? request.fileId : undefined;
 
         try {
             let segmentsProcessed: number = 0;
@@ -505,7 +510,14 @@ export class HybridTMServer {
                     segmentsWithMatches++;
                     totalMatches += results.length;
                     const segmentId: string | undefined = segment.getAttribute('id')?.getValue();
-                    const ref: string = segmentId ? '#' + segmentId : '#/u=' + unitId;
+                    let ref: string;
+                    if (segmentId) {
+                        ref = '#' + segmentId;
+                    } else if (fileId) {
+                        ref = '#/f=' + fileId + '/u=' + unitId;
+                    } else {
+                        ref = '#/u=' + unitId;
+                    }
                     results.forEach((match: Match) => unitMatches.push(Utils.buildXliffMatch(ref, match, dataCounter)));
                 }
 

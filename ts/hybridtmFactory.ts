@@ -96,6 +96,11 @@ export class HybridTMFactory {
             throw new Error('An instance with the provided name already exists');
         }
         const resolvedPath: string = path.resolve(filePath);
+        for (const existing of this.registry.values()) {
+            if (existing.filePath === resolvedPath) {
+                throw new Error('An instance already exists at the provided path');
+            }
+        }
         const now: string = new Date().toISOString();
         const metadata: HybridTMInstanceMetadata = {
             name: trimmedName,

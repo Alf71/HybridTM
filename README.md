@@ -150,14 +150,10 @@ If you copy `samples/` elsewhere, update `samples/package.json` so the `hybridtm
 - `dist/` – compiled JavaScript and declarations (`npm run build`)
 - `docs/` – task-focused tutorials referenced above
 - `samples/` – standalone TypeScript project with runnable workflows
-- `models/` – local cache for pre-downloaded embedding models (optional)
 
 ## Development
 
 - `npm run build` – compile TypeScript to `dist/`
-- The [samples](docs/04-sample-scenarios.md) project doubles as a manual regression check for the importers and search APIs
-
-Contributions should include unit or integration coverage when you touch importer or search logic. Use `HybridTMFactory.removeInstance(name)` to clean up any throwaway databases you create during manual tests.
 
 ## License
 

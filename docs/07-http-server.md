@@ -57,7 +57,7 @@ Every response has one of two shapes:
 
 ## Instance lifecycle: `open` / `close`
 
-The server keeps a `HybridTM` instance (and its loaded embedder) in memory across requests, until it's explicitly closed. Every data command below (`import`, `match`, `storeXliffUnit`, `concordanceSearch`, `semanticSearch`, `semanticTranslationSearch`, `close`) requires the instance to already be open.
+The server keeps a `HybridTM` instance (and its loaded embedder) in memory across requests, until it's explicitly closed. Every data command below (`import`, `match`, `batchTranslate`, `storeXliffUnit`, `concordanceSearch`, `semanticSearch`, `semanticTranslationSearch`, `close`) requires the instance to already be open.
 
 ### `open`
 
@@ -122,7 +122,6 @@ Importing a large XLIFF/TMX/SDLTM file (generating an embedding per segment) or 
   "file": "./translations/project.xlf",
   "type": "xliff",
   "minState": "translated",
-  "keepEmpty": false,
   "noMetadata": false
 }
 ```
@@ -133,8 +132,9 @@ Importing a large XLIFF/TMX/SDLTM file (generating an embedding per segment) or 
 | `file` | yes | File to import |
 | `type` | no | `xliff`, `tmx`, or `sdltm`; inferred from the file extension when omitted |
 | `minState` | no | Minimum segment state to import (see [02 · Importing Data](02-importing-data.md)) |
-| `keepEmpty` | no | `true` to import segments with an empty target (default: `false`) |
 | `noMetadata` | no | `true` to skip extracting notes/metadata/extension attributes (default: `false`) |
+
+Empty XLIFF targets are skipped automatically, unless the segment's `@state` is `final`.
 
 Returns immediately:
 
@@ -279,6 +279,55 @@ For editors/CAT tools that want to persist a single confirmed `<unit>` as the us
 
 This command returns `{ "status": "success", "payload": {} }` directly on success.
 
+## `batchTranslate`
+
+For editors/CAT tools that want to enrich a batch of `<unit>` elements with TM match candidates in one go.
+
+```json
+{
+  "command": "batchTranslate",
+  "name": "project",
+  "units": [
+    "<unit id=\"u1\"><segment><source>Sign in</source><target>Iniciar sesión</target></segment></unit>",
+    "<unit id=\"u2\"><segment><source>Reset password</source><target>Restablecer contraseña</target></segment></unit>",
+    "<unit id=\"u3\"><segment state=\"final\"><source>Welcome back</source><target>Bienvenido de nuevo</target></segment></unit>"
+  ],
+  "srcLang": "en",
+  "tgtLang": "es",
+  "similarity": 60,
+  "limit": 5,
+  "fileId": "content.xlf"
+}
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Instance to search against (must already be `open`) |
+| `units` | yes | Array of `<unit>` XML strings to enrich |
+| `srcLang` | yes | Source language of the units |
+| `tgtLang` | yes | Target language to search for |
+| `similarity` | yes | Minimum hybrid match score, 0-100 |
+| `limit` | no | Max candidates per segment; defaults to `semanticTranslationSearch`'s own default (10) when omitted |
+| `fileId` | no | File identifier for segment references; used in `ref` when a segment has no `id` |
+
+Every segment is processed except ones with `state="final"`. For each segment, it runs `semanticTranslationSearch` and adds `<mtc:match>` entries to that unit's `<mtc:matches>` block, declaring the `xmlns:mtc` namespace on the unit if it isn't already present. The payload contains the enriched units as XML strings, in the same order as the input:
+
+```json
+{
+  "status": "success",
+  "payload": {
+    "units": [
+      "<unit id=\"u1\">...</unit>",
+      "<unit id=\"u2\">...</unit>",
+      "<unit id=\"u3\">...</unit>"
+    ],
+    "segmentsProcessed": 2,
+    "segmentsWithMatches": 2,
+    "totalMatches": 6
+  }
+}
+```
+
 ## `stop`
 
 ```json
@@ -298,6 +347,7 @@ Shuts down the HTTP server.
 | `list` | no | no | `HybridTMInstanceMetadata[]` |
 | `import` | yes | **yes** | `{ ticket }`, later `{ imported }` |
 | `match` | yes | **yes** | `{ ticket }`, later match stats |
+| `batchTranslate` | yes | no | enriched `units`, plus segment/match counts |
 | `status` | no | no | job status/result |
 | `concordanceSearch` | yes | no | `Map<string, XMLElement>[]` (as JSON) |
 | `semanticSearch` | yes | no | `SearchResult[]` |

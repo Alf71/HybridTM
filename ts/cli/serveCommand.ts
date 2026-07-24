@@ -17,6 +17,8 @@ import { CliUtils } from './cliUtils.js';
 const DEFAULT_PORT: number = 8050;
 const LOCALHOST: string = '127.0.0.1';
 const ALL_INTERFACES: string = '0.0.0.0';
+const STARTUP_TIMEOUT_MS: number = 5000;
+const POLL_INTERVAL_MS: number = 100;
 
 export class ServeCommand {
 
@@ -44,6 +46,46 @@ export class ServeCommand {
             stdio: 'ignore'
         });
         child.unref();
-        console.log('HybridTM server starting on ' + host + ':' + port);
+        try {
+            await ServeCommand.waitForServer(host, port, STARTUP_TIMEOUT_MS);
+            console.log('HybridTM server started on ' + host + ':' + port);
+        } catch (error: unknown) {
+            console.error('HybridTM server failed to start on ' + host + ':' + port);
+            process.exit(1);
+        }
+    }
+
+    private static waitForServer(host: string, port: number, timeoutMs: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const startTime: number = Date.now();
+            const check = (): void => {
+                if (Date.now() - startTime > timeoutMs) {
+                    reject(new Error('Server did not start within ' + timeoutMs + 'ms'));
+                    return;
+                }
+                ServeCommand.pingServer(host, port)
+                    .then(() => resolve())
+                    .catch(() => setTimeout(check, POLL_INTERVAL_MS));
+            };
+            check();
+        });
+    }
+
+    private static pingServer(host: string, port: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const client = require('node:http').request({
+                host: host,
+                port: port,
+                method: 'POST',
+                path: '/',
+                headers: { 'Content-Type': 'application/json' }
+            }, (res: any) => {
+                res.on('data', () => {});
+                res.on('end', () => resolve());
+            });
+            client.on('error', (error: Error) => reject(error));
+            client.write('{}');
+            client.end();
+        });
     }
 }

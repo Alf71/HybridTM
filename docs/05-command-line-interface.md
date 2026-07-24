@@ -54,10 +54,9 @@ hybridtm import -name project -file ./translations/project.xlf [options]
 | `-file` | yes | File to import |
 | `-type` | no | `xliff`, `tmx`, or `sdltm`; inferred from the file extension when omitted |
 | `-minState` | no | Minimum segment state to import (default: `translated`) — see [02 · Importing Data](02-importing-data.md) |
-| `-keepEmpty` | no | Import segments with an empty target (default: skipped) |
 | `-noMetadata` | no | Skip extracting notes/metadata/extension attributes |
 
-These map directly onto `ImportOptions`; the defaults match `DEFAULT_IMPORT_OPTIONS`.
+Empty XLIFF targets are skipped automatically, unless the segment's `@state` is `final`. These map directly onto `ImportOptions`; the defaults match `DEFAULT_IMPORT_OPTIONS`.
 The command prints how many entries were imported.
 
 ## `match` — enrich an XLIFF file with TM candidates

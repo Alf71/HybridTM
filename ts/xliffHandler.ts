@@ -162,9 +162,6 @@ export class XLIFFHandler {
         if (pureSource.trim().length === 0) {
             return null;
         }
-        if (this.options.skipEmpty && pureTarget.trim().length === 0) {
-            return null;
-        }
 
         const rawState: string | undefined = segment.getState();
         if (rawState !== undefined && !this.isTranslationState(rawState)) {
@@ -175,6 +172,9 @@ export class XLIFFHandler {
         const minRank: number = this.getStateRank(this.options.minState);
 
         if (stateRank < minRank) {
+            return null;
+        }
+        if (targetElement.getContent().length === 0 && state !== 'final') {
             return null;
         }
 
@@ -282,7 +282,7 @@ export class XLIFFHandler {
         if (pureSource.trim().length === 0) {
             return;
         }
-        if (this.options.skipEmpty && pureTarget.trim().length === 0) {
+        if (mergedTarget.getContent().length === 0) {
             return;
         }
 

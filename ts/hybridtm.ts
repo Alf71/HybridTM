@@ -455,24 +455,30 @@ export class HybridTM {
     }
 
     async close(): Promise<void> {
+        let closeError: unknown;
         try {
             if (this.table) {
-                this.table.close();
-                this.table = null;
+                await this.table.close();
             }
             if (this.db) {
-                this.db.close();
-                this.db = null;
+                await this.db.close();
             }
             if (this.embedder) {
                 await this.embedder.dispose();
-                this.embedder = null;
             }
+        } catch (err: unknown) {
+            closeError = err;
+            console.error('Error closing database:', err);
+        } finally {
+            this.table = null;
+            this.db = null;
+            this.embedder = null;
             this.embedderPromise = null;
             this.initialized = false;
             this.initializationPromise = null;
-        } catch (err: unknown) {
-            console.error('Error closing database:', err);
+        }
+        if (closeError) {
+            throw closeError instanceof Error ? closeError : new Error(String(closeError));
         }
     }
 
@@ -1054,24 +1060,36 @@ export class HybridTM {
         // Phase 1: Parse XLIFF and write to temporary JSONL file
         const resolvedOptions: ImportOptions = resolveImportOptions(options);
         const reader: XLIFFReader = new XLIFFReader(filePath, resolvedOptions);
-        await reader.parse();
+        try {
+            await reader.parse();
 
-        // Phase 2: Batch import from JSONL file (asynchronous)
-        const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
-        await importer.import();
-        return reader.getEntryCount();
+            // Phase 2: Batch import from JSONL file (asynchronous)
+            const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
+            await importer.import();
+            return reader.getEntryCount();
+        } finally {
+            if (existsSync(reader.getTempFilePath())) {
+                unlinkSync(reader.getTempFilePath());
+            }
+        }
     }
 
     async importTMX(filePath: string, options?: ImportOptions): Promise<number> {
         // Phase 1: Parse TMX and write to temporary JSONL file
         const resolvedOptions: ImportOptions = resolveImportOptions(options);
         const reader: TMXReader = new TMXReader(filePath, resolvedOptions);
-        await reader.parse();
+        try {
+            await reader.parse();
 
-        // Phase 2: Batch import from JSONL file (asynchronous)
-        const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
-        await importer.import();
-        return reader.getEntryCount();
+            // Phase 2: Batch import from JSONL file (asynchronous)
+            const importer: BatchImporter = new BatchImporter(this, reader.getTempFilePath(), reader.getEntryCount());
+            await importer.import();
+            return reader.getEntryCount();
+        } finally {
+            if (existsSync(reader.getTempFilePath())) {
+                unlinkSync(reader.getTempFilePath());
+            }
+        }
     }
 
     async importSDLTM(filePath: string, options?: ImportOptions): Promise<number> {
@@ -1079,8 +1097,8 @@ export class HybridTM {
         const tempFileName = 'tmx_' + Date.now() + '_' + Math.random().toString(36).substring(7) + '.tmx';
         const tempFilePath: string = join(tempDir, tempFileName);
         const packageJson: any = await import('../package.json', { with: { type: 'json' } });
-        const productName: string = packageJson.default.productName;
-        const version: string = packageJson.default.version;
+        const productName: string = packageJson.productName;
+        const version: string = packageJson.version;
         const tmReader: TMReader = new TMReader({ 'productName': productName, 'version': version });
         try {
             const data = await tmReader.convert(filePath, tempFilePath);
