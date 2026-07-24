@@ -12,7 +12,7 @@
 
 import { createWriteStream, WriteStream } from "node:fs";
 import { Catalog, CData, ContentHandler, Grammar, TextNode, XMLAttribute, XMLElement, XMLNode } from "typesxml";
-import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions } from './importOptions.js';
+import { ImportOptions, ImportOptionsResolver, ResolvedImportOptions } from './importOptions.js';
 import { EntryMetadata } from './langEntry.js';
 import { Utils } from './utils.js';
 
@@ -39,7 +39,7 @@ export class TMXHandler implements ContentHandler {
     private readonly options: ResolvedImportOptions;
     private idCounter: number;
 
-    constructor(tempFilePath: string, filename: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
+    constructor(tempFilePath: string, filename: string, options: ImportOptions = ImportOptionsResolver.DEFAULT) {
         this.fileId = filename;
         this.idCounter = Date.now();
         this.writeStream = createWriteStream(tempFilePath, { encoding: 'utf8' });
@@ -47,7 +47,7 @@ export class TMXHandler implements ContentHandler {
             this.writeStream.once('finish', resolve);
             this.writeStream.once('error', reject);
         });
-        this.options = resolveImportOptions(options);
+        this.options = ImportOptionsResolver.resolve(options);
     }
 
     setGrammar(grammar: Grammar | undefined): void {

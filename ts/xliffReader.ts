@@ -13,7 +13,7 @@
 import { tmpdir } from "node:os";
 import { join } from 'node:path';
 import { XliffDocument, XliffParser } from "typesxliff";
-import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions } from './importOptions.js';
+import { ImportOptions, ImportOptionsResolver, ResolvedImportOptions } from './importOptions.js';
 import { XLIFFHandler } from './xliffHandler.js';
 
 export class XLIFFReader {
@@ -23,9 +23,9 @@ export class XLIFFReader {
     handler: XLIFFHandler;
     private readonly options: ResolvedImportOptions;
 
-    constructor(filePath: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
+    constructor(filePath: string, options: ImportOptions = ImportOptionsResolver.DEFAULT) {
         this.filePath = filePath;
-        this.options = resolveImportOptions(options);
+        this.options = ImportOptionsResolver.resolve(options);
 
         // Generate temp file path
         const tempDir = tmpdir();

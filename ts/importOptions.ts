@@ -19,14 +19,17 @@ export interface ImportOptions {
 
 export type ResolvedImportOptions = Required<ImportOptions>;
 
-export const DEFAULT_IMPORT_OPTIONS: ResolvedImportOptions = {
-    minState: 'translated',
-    extractMetadata: true
-};
+export class ImportOptionsResolver {
 
-export function resolveImportOptions(options?: ImportOptions): ResolvedImportOptions {
-    return {
-        ...DEFAULT_IMPORT_OPTIONS,
-        ...(options ?? {})
+    static readonly DEFAULT: ResolvedImportOptions = {
+        minState: 'translated',
+        extractMetadata: true
     };
+
+    static resolve(options?: ImportOptions): ResolvedImportOptions {
+        return {
+            ...ImportOptionsResolver.DEFAULT,
+            ...(options ?? {})
+        };
+    }
 }

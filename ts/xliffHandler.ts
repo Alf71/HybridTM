@@ -17,7 +17,7 @@ import {
     XliffMeta, XliffMetaGroup, XliffMrk, XliffPc, XliffPh, XliffSc, XliffSegment,
     XliffSm, XliffSource, XliffTarget, XliffUnit
 } from "typesxliff";
-import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions, TranslationState } from './importOptions.js';
+import { ImportOptions, ImportOptionsResolver, ResolvedImportOptions, TranslationState } from './importOptions.js';
 import { EntryMetadata } from './langEntry.js';
 import { Utils } from './utils.js';
 
@@ -54,13 +54,13 @@ export class XLIFFHandler {
     private entryCount: number = 0;
     private readonly options: ResolvedImportOptions;
 
-    constructor(tempFilePath: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
+    constructor(tempFilePath: string, options: ImportOptions = ImportOptionsResolver.DEFAULT) {
         this.writeStream = createWriteStream(tempFilePath, { encoding: 'utf8' });
         this.completionPromise = new Promise<void>((resolve, reject) => {
             this.writeStream.once('finish', resolve);
             this.writeStream.once('error', reject);
         });
-        this.options = resolveImportOptions(options);
+        this.options = ImportOptionsResolver.resolve(options);
     }
 
     getEntryCount(): number {

@@ -13,7 +13,7 @@
 import { tmpdir } from "node:os";
 import { basename, join } from 'node:path';
 import { SAXParser } from "typesxml";
-import { DEFAULT_IMPORT_OPTIONS, ImportOptions, ResolvedImportOptions, resolveImportOptions } from './importOptions.js';
+import { ImportOptions, ImportOptionsResolver, ResolvedImportOptions } from './importOptions.js';
 import { TMXHandler } from './tmxHandler.js';
 
 export class TMXReader {
@@ -24,9 +24,9 @@ export class TMXReader {
     jsonlTempPath: string;
     private readonly options: ResolvedImportOptions;
 
-    constructor(filePath: string, options: ImportOptions = DEFAULT_IMPORT_OPTIONS) {
+    constructor(filePath: string, options: ImportOptions = ImportOptionsResolver.DEFAULT) {
         this.filePath = filePath;
-        this.options = resolveImportOptions(options);
+        this.options = ImportOptionsResolver.resolve(options);
         const filename = basename(filePath);
 
         // Generate temp file path for the JSONL output

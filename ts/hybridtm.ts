@@ -20,7 +20,7 @@ import { TMReader } from 'sdltm';
 import { XMLAttribute, XMLElement } from 'typesxml';
 import { BackupReader } from './backupReader.js';
 import { BatchImporter } from './batchImporter.js';
-import { ImportOptions, resolveImportOptions, TranslationState } from './importOptions.js';
+import { ImportOptions, ImportOptionsResolver, TranslationState } from './importOptions.js';
 import { EntryMetadata, LangEntry, SearchResult, SegmentMetadata } from './langEntry.js';
 import { Match } from './match.js';
 import { MatchQuality } from './matchQuality.js';
@@ -1058,7 +1058,7 @@ export class HybridTM {
 
     async importXLIFF(filePath: string, options?: ImportOptions): Promise<number> {
         // Phase 1: Parse XLIFF and write to temporary JSONL file
-        const resolvedOptions: ImportOptions = resolveImportOptions(options);
+        const resolvedOptions: ImportOptions = ImportOptionsResolver.resolve(options);
         const reader: XLIFFReader = new XLIFFReader(filePath, resolvedOptions);
         try {
             await reader.parse();
@@ -1076,7 +1076,7 @@ export class HybridTM {
 
     async importTMX(filePath: string, options?: ImportOptions): Promise<number> {
         // Phase 1: Parse TMX and write to temporary JSONL file
-        const resolvedOptions: ImportOptions = resolveImportOptions(options);
+        const resolvedOptions: ImportOptions = ImportOptionsResolver.resolve(options);
         const reader: TMXReader = new TMXReader(filePath, resolvedOptions);
         try {
             await reader.parse();
