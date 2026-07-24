@@ -63,17 +63,18 @@ The command prints how many entries were imported.
 ## `match` — enrich an XLIFF file with TM candidates
 
 ```bash
-hybridtm match -name project -file ./new-content.xlf [-output <path>] [-limit N] [-similarity N] [-all]
+hybridtm match -name project -file ./new-content.xlf -similarity N [-output <path>] [-limit N]
 ```
 
 | Flag | Required | Description |
 | --- | --- | --- |
 | `-name` | yes | Instance to search against |
 | `-file` | yes | XLIFF file to enrich |
+| `-similarity` | yes | Minimum **hybrid** match score, 0-100 — not the same score as the output's `@similarity` attribute, see below |
 | `-output` | no | Output path; defaults to `<file-without-extension>.matches.xlf` next to the input |
-| `-limit` | no | Max candidates per segment (default: 5) |
-| `-similarity` | no | Minimum **hybrid** match score, 0-100 (default: 60) — not the same score as the output's `@similarity` attribute, see below |
-| `-all` | no | Consider every segment, not just untranslated ones (default: only segments with no `<target>`, an empty `<target>`, or `state` undefined/`initial`) |
+| `-limit` | no | Max candidates per segment; defaults to `semanticTranslationSearch`'s own default (10) when omitted |
+
+Every segment is processed except ones with `state="final"`.
 
 **`match` never modifies `<target>` and never overwrites the input file.**
 For every segment it processes, it runs `semanticTranslationSearch` against

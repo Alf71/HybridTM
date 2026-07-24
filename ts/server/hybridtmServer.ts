@@ -14,8 +14,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
 import { CliUtils } from "../cli/cliUtils.js";
-import { importFile, ImportType, isTranslationState, resolveImportType } from "../cli/importCommand.js";
-import { DEFAULT_LIMIT, DEFAULT_SIMILARITY, matchXliffFile, resolveOutputPath } from "../cli/matchCommand.js";
+import { ImportCommand, ImportType } from "../cli/importCommand.js";
+import { MatchCommand } from "../cli/matchCommand.js";
 import { HybridTMFactory, HybridTMInstanceMetadata } from '../hybridtmFactory.js';
 import { HybridTM } from "../hybridtm.js";
 import { ImportOptions } from "../importOptions.js";
@@ -23,13 +23,15 @@ import { MetadataFilter, TranslationSearchFilters } from "../searchFilters.js";
 import { Match } from "../match.js";
 import { SearchResult } from "../langEntry.js";
 import { Utils } from "../utils.js";
-import { XMLElement } from "typesxml";
+import { XliffMatch, XliffMatches } from "typesxliff";
+import { XMLAttribute, XMLElement } from "typesxml";
 
 interface JobRecord {
     status: 'running' | 'completed' | 'failed';
     payload?: unknown;
     reason?: string;
 }
+
 
 export class HybridTMServer {
 
@@ -149,6 +151,9 @@ export class HybridTMServer {
         if (command === 'storeXliffUnit') {
             return this.handleStoreXliffUnit(request);
         }
+        if (command === 'batchTranslate') {
+            return this.handleBatchTranslate(request);
+        }
         return request;
     }
 
@@ -206,7 +211,7 @@ export class HybridTMServer {
         }
         let type: ImportType;
         try {
-            type = resolveImportType(typeof request.type === 'string' ? request.type : undefined, filePath);
+            type = ImportCommand.resolveImportType(typeof request.type === 'string' ? request.type : undefined, filePath);
         } catch (error: unknown) {
             return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
         }
@@ -215,13 +220,13 @@ export class HybridTMServer {
             extractMetadata: request.noMetadata !== true
         };
         if (typeof request.minState === 'string') {
-            if (!isTranslationState(request.minState)) {
+            if (!ImportCommand.isTranslationState(request.minState)) {
                 return { status: 'failed', reason: 'Unknown minState value "' + request.minState + '". Expected initial, translated, reviewed, or final.' };
             }
             options.minState = request.minState;
         }
         const ticket: string = this.startJob(async () => {
-            const imported: number = await importFile(instance, filePath, type, options);
+            const imported: number = await ImportCommand.importFile(instance, filePath, type, options);
             return { imported: imported };
         });
         return { status: 'success', payload: { ticket: ticket } };
@@ -245,12 +250,14 @@ export class HybridTMServer {
             return { status: 'failed', reason: 'XLIFF file "' + filePath + '" does not exist' };
         }
         const rawOutput: any = request.output;
-        const outputPath: string = resolveOutputPath(typeof rawOutput === 'string' && rawOutput.trim().length > 0 ? rawOutput : undefined, filePath);
-        const limit: number = typeof request.limit === 'number' ? request.limit : DEFAULT_LIMIT;
-        const similarity: number = typeof request.similarity === 'number' ? request.similarity : DEFAULT_SIMILARITY;
-        const processAll: boolean = request.all === true;
+        const outputPath: string = MatchCommand.resolveOutputPath(typeof rawOutput === 'string' && rawOutput.trim().length > 0 ? rawOutput : undefined, filePath);
+        const similarity: any = request.similarity;
+        if (typeof similarity !== 'number') {
+            return { status: 'failed', reason: 'Missing similarity parameter' };
+        }
+        const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
 
-        const ticket: string = this.startJob(() => matchXliffFile(instance, filePath, outputPath, limit, similarity, processAll));
+        const ticket: string = this.startJob(() => MatchCommand.matchXliffFile(instance, filePath, outputPath, similarity, limit));
         return { status: 'success', payload: { ticket: ticket } };
     }
 
@@ -441,4 +448,96 @@ export class HybridTMServer {
             }
         }
     }
+
+    private async handleBatchTranslate(request: any): Promise<unknown> {
+        const name: any = request.name;
+        if (typeof name !== 'string' || name.trim().length === 0) {
+            return { status: 'failed', reason: 'Missing name parameter' };
+        }
+        const instance: HybridTM | undefined = this.instances.get(name);
+        if (!instance) {
+            return { status: 'failed', reason: 'Requested instance is not open' };
+        }
+        const units: any = request.units;
+        const srcLang: any = request.srcLang;
+        const tgtLang: any = request.tgtLang;
+        if (!Array.isArray(units) || units.length === 0 || units.some((unit: unknown) => typeof unit !== 'string')
+            || typeof srcLang !== 'string' || typeof tgtLang !== 'string') {
+            return { status: 'failed', reason: 'Missing units, srcLang or tgtLang parameter' };
+        }
+        const similarity: any = request.similarity;
+        if (typeof similarity !== 'number') {
+            return { status: 'failed', reason: 'Missing similarity parameter' };
+        }
+        const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
+
+        try {
+            let segmentsProcessed: number = 0;
+            let segmentsWithMatches: number = 0;
+            let totalMatches: number = 0;
+            const resultUnits: string[] = [];
+
+            for (const unitXml of units as string[]) {
+                const unitElement: XMLElement = Utils.buildXMLElement(unitXml);
+                if (unitElement.getName() !== 'unit') {
+                    throw new Error('Expected a <unit> element, found <' + unitElement.getName() + '>');
+                }
+                const unitId: string = unitElement.getAttribute('id')?.getValue() ?? '';
+                const segments: XMLElement[] = unitElement.getChildren().filter((child: XMLElement) => child.getName() === 'segment');
+
+                const unitMatches: XliffMatch[] = [];
+                const dataCounter: { value: number } = { value: 0 };
+
+                for (const segment of segments) {
+                    if (segment.getAttribute('state')?.getValue() === 'final') {
+                        continue;
+                    }
+                    const source: XMLElement | undefined = segment.getChild('source');
+                    const pureSource: string = source ? Utils.getPureText(source) : '';
+                    if (pureSource.trim().length === 0) {
+                        continue;
+                    }
+                    segmentsProcessed++;
+                    const results: Match[] = Utils.dedupeMatches(await instance.semanticTranslationSearch(pureSource, srcLang, tgtLang, similarity, limit));
+                    if (results.length === 0) {
+                        continue;
+                    }
+                    segmentsWithMatches++;
+                    totalMatches += results.length;
+                    const segmentId: string | undefined = segment.getAttribute('id')?.getValue();
+                    const ref: string = segmentId ? '#' + segmentId : '#/u=' + unitId;
+                    results.forEach((match: Match) => unitMatches.push(Utils.buildXliffMatch(ref, match, dataCounter)));
+                }
+
+                if (unitMatches.length > 0) {
+                    const matches: XliffMatches = new XliffMatches();
+                    matches.setNamespacePrefix(Utils.MTC_PREFIX);
+                    unitMatches.forEach((match: XliffMatch) => matches.addMatch(match));
+                    unitElement.setContent([matches.toElement(), ...unitElement.getContent()]);
+                    this.declareMatchesNamespace(unitElement);
+                }
+
+                resultUnits.push(unitElement.toString());
+            }
+
+            return {
+                status: 'success',
+                payload: {
+                    units: resultUnits,
+                    segmentsProcessed: segmentsProcessed,
+                    segmentsWithMatches: segmentsWithMatches,
+                    totalMatches: totalMatches
+                }
+            };
+        } catch (error: unknown) {
+            return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+        }
+    }
+
+    private declareMatchesNamespace(unit: XMLElement): void {
+        if (!Utils.isNamespaceDeclared(unit.getAttributes(), Utils.MATCHES_NAMESPACE)) {
+            unit.setAttribute(new XMLAttribute('xmlns:' + Utils.MTC_PREFIX, Utils.MATCHES_NAMESPACE));
+        }
+    }
+
 }

@@ -13,39 +13,42 @@
 import { HybridTM, HybridTMFactory } from '../index.js';
 import { CliUtils } from './cliUtils.js';
 
-export function usage(): void {
-    console.log('Usage: hybridtm backup -name <name> -file <path>');
-    console.log();
-    console.log('  -name   Instance to back up (required)');
-    console.log('  -file   Output XML file path (required)');
-}
+export class BackupCommand {
 
-export async function runBackupCommand(args: string[]): Promise<void> {
-    if (CliUtils.hasFlag(args, '-help')) {
-        usage();
-        return;
+    static usage(): void {
+        console.log('Usage: hybridtm backup -name <name> -file <path>');
+        console.log();
+        console.log('  -name   Instance to back up (required)');
+        console.log('  -file   Output XML file path (required)');
     }
 
-    const name: string | undefined = CliUtils.getFlag(args, '-name');
-    const rawFile: string | undefined = CliUtils.getFlag(args, '-file');
-    if (!name || !rawFile) {
-        usage();
-        CliUtils.fail('Missing required -name or -file.');
-    }
+    static async run(args: string[]): Promise<void> {
+        if (CliUtils.hasFlag(args, '-help')) {
+            BackupCommand.usage();
+            return;
+        }
 
-    const outputPath: string = CliUtils.resolvePath(rawFile);
+        const name: string | undefined = CliUtils.getFlag(args, '-name');
+        const rawFile: string | undefined = CliUtils.getFlag(args, '-file');
+        if (!name || !rawFile) {
+            BackupCommand.usage();
+            CliUtils.fail('Missing required -name or -file.');
+        }
 
-    const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
-    if (!tm) {
-        CliUtils.fail('No instance named "' + name + '". Run "hybridtm create" or "hybridtm list" first.');
-    }
+        const outputPath: string = CliUtils.resolvePath(rawFile);
 
-    try {
-        const count: number = await tm.backup(outputPath);
-        console.log('Backed up ' + count + ' entries from "' + name + '" to ' + outputPath + '.');
-    } catch (error: unknown) {
-        CliUtils.fail(error instanceof Error ? error.message : String(error));
-    } finally {
-        await tm.close();
+        const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
+        if (!tm) {
+            CliUtils.fail('No instance named "' + name + '". Run "hybridtm create" or "hybridtm list" first.');
+        }
+
+        try {
+            const count: number = await tm.backup(outputPath);
+            console.log('Backed up ' + count + ' entries from "' + name + '" to ' + outputPath + '.');
+        } catch (error: unknown) {
+            CliUtils.fail(error instanceof Error ? error.message : String(error));
+        } finally {
+            await tm.close();
+        }
     }
 }

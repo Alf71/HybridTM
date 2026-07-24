@@ -11,14 +11,14 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
-import { runBackupCommand } from './backupCommand.js';
-import { runCreateCommand } from './createCommand.js';
-import { runImportCommand } from './importCommand.js';
-import { runMatchCommand } from './matchCommand.js';
-import { runListCommand, runRemoveCommand } from './registryCommands.js';
-import { runRestoreCommand } from './restoreCommand.js';
-import { runServeCommand } from './serveCommand.js';
-import { runStopCommand } from './stopCommand.js';
+import { BackupCommand } from './backupCommand.js';
+import { CreateCommand } from './createCommand.js';
+import { ImportCommand } from './importCommand.js';
+import { MatchCommand } from './matchCommand.js';
+import { RegistryCommands } from './registryCommands.js';
+import { RestoreCommand } from './restoreCommand.js';
+import { ServeCommand } from './serveCommand.js';
+import { StopCommand } from './stopCommand.js';
 
 class HybridTMCli {
 
@@ -31,23 +31,23 @@ class HybridTMCli {
         const rest: string[] = argv.slice(1);
         try {
             if (command === 'create') {
-                await runCreateCommand(rest);
+                await CreateCommand.run(rest);
             } else if (command === 'import') {
-                await runImportCommand(rest);
+                await ImportCommand.run(rest);
             } else if (command === 'match') {
-                await runMatchCommand(rest);
+                await MatchCommand.run(rest);
             } else if (command === 'backup') {
-                await runBackupCommand(rest);
+                await BackupCommand.run(rest);
             } else if (command === 'restore') {
-                await runRestoreCommand(rest);
+                await RestoreCommand.run(rest);
             } else if (command === 'list') {
-                await runListCommand(rest);
+                await RegistryCommands.runList(rest);
             } else if (command === 'remove') {
-                await runRemoveCommand(rest);
+                await RegistryCommands.runRemove(rest);
             } else if (command === 'serve') {
-                await runServeCommand(rest);
+                await ServeCommand.run(rest);
             } else if (command === 'stop') {
-                await runStopCommand(rest);
+                await StopCommand.run(rest);
             } else if (command === '-help' || command === '--help') {
                 this.usage();
                 process.exit(0);

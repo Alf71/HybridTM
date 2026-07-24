@@ -13,39 +13,42 @@
 import { HybridTM, HybridTMFactory } from '../index.js';
 import { CliUtils } from './cliUtils.js';
 
-export function usage(): void {
-    console.log('Usage: hybridtm create -name <name> -path <dir> [-model compact|standard|large|<model id>]');
-    console.log();
-    console.log('  -name    Name to register the new instance under (required)');
-    console.log('  -path    Directory where the instance\'s LanceDB data will live (required)');
-    console.log('  -model   Embedding model preset (compact, standard, large [default]), or any');
-    console.log('           other Hugging Face feature-extraction model id to load directly');
-    console.log('           (e.g. onnx-community/gte-multilingual-base). See the README section');
-    console.log('           "Choosing an embedding model" for guidance on which preset to pick.');
-}
+export class CreateCommand {
 
-export async function runCreateCommand(args: string[]): Promise<void> {
-    if (CliUtils.hasFlag(args, '-help')) {
-        usage();
-        return;
+    static usage(): void {
+        console.log('Usage: hybridtm create -name <name> -path <dir> [-model compact|standard|large|<model id>]');
+        console.log();
+        console.log('  -name    Name to register the new instance under (required)');
+        console.log('  -path    Directory where the instance\'s LanceDB data will live (required)');
+        console.log('  -model   Embedding model preset (compact, standard, large [default]), or any');
+        console.log('           other Hugging Face feature-extraction model id to load directly');
+        console.log('           (e.g. onnx-community/gte-multilingual-base). See the README section');
+        console.log('           "Choosing an embedding model" for guidance on which preset to pick.');
     }
 
-    const name: string | undefined = CliUtils.getFlag(args, '-name');
-    const rawPath: string | undefined = CliUtils.getFlag(args, '-path');
-    if (!name || !rawPath) {
-        usage();
-        CliUtils.fail('Missing required -name or -path.');
-    }
+    static async run(args: string[]): Promise<void> {
+        if (CliUtils.hasFlag(args, '-help')) {
+            CreateCommand.usage();
+            return;
+        }
 
-    const modelAlias: string | undefined = CliUtils.getFlag(args, '-model');
-    const modelName: string = CliUtils.resolveModelName(modelAlias);
-    const resolvedPath: string = CliUtils.resolvePath(rawPath);
+        const name: string | undefined = CliUtils.getFlag(args, '-name');
+        const rawPath: string | undefined = CliUtils.getFlag(args, '-path');
+        if (!name || !rawPath) {
+            CreateCommand.usage();
+            CliUtils.fail('Missing required -name or -path.');
+        }
 
-    try {
-        const tm: HybridTM = HybridTMFactory.createInstance(name, resolvedPath, modelName);
-        await tm.close();
-        console.log('Created instance "' + name + '" at ' + resolvedPath + ' (model: ' + modelName + ')');
-    } catch (error: unknown) {
-        CliUtils.fail(error instanceof Error ? error.message : String(error));
+        const modelAlias: string | undefined = CliUtils.getFlag(args, '-model');
+        const modelName: string = CliUtils.resolveModelName(modelAlias);
+        const resolvedPath: string = CliUtils.resolvePath(rawPath);
+
+        try {
+            const tm: HybridTM = HybridTMFactory.createInstance(name, resolvedPath, modelName);
+            await tm.close();
+            console.log('Created instance "' + name + '" at ' + resolvedPath + ' (model: ' + modelName + ')');
+        } catch (error: unknown) {
+            CliUtils.fail(error instanceof Error ? error.message : String(error));
+        }
     }
 }

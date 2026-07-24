@@ -16,97 +16,100 @@ import { CliUtils } from './cliUtils.js';
 
 export type ImportType = 'xliff' | 'tmx' | 'sdltm';
 
-export function usage(): void {
-    console.log('Usage: hybridtm import -name <name> -file <path> [-type xliff|tmx|sdltm]');
-    console.log('                        [-minState initial|translated|reviewed|final]');
-    console.log('                        [-keepEmpty] [-noMetadata]');
-    console.log();
-    console.log('  -name             Instance to import into (required)');
-    console.log('  -file             File to import (required)');
-    console.log('  -type             Import format; inferred from the file extension when omitted');
-    console.log('  -minState         Minimum segment state to import (default: translated)');
-    console.log('  -keepEmpty        Import segments with an empty target (default: skipped)');
-    console.log('  -noMetadata       Skip extracting notes/metadata/extension attributes');
-}
+export class ImportCommand {
 
-export async function runImportCommand(args: string[]): Promise<void> {
-    if (CliUtils.hasFlag(args, '-help')) {
-        usage();
-        return;
+    static usage(): void {
+        console.log('Usage: hybridtm import -name <name> -file <path> [-type xliff|tmx|sdltm]');
+        console.log('                        [-minState initial|translated|reviewed|final]');
+        console.log('                        [-keepEmpty] [-noMetadata]');
+        console.log();
+        console.log('  -name             Instance to import into (required)');
+        console.log('  -file             File to import (required)');
+        console.log('  -type             Import format; inferred from the file extension when omitted');
+        console.log('  -minState         Minimum segment state to import (default: translated)');
+        console.log('  -keepEmpty        Import segments with an empty target (default: skipped)');
+        console.log('  -noMetadata       Skip extracting notes/metadata/extension attributes');
     }
 
-    const name: string | undefined = CliUtils.getFlag(args, '-name');
-    const rawFile: string | undefined = CliUtils.getFlag(args, '-file');
-    if (!name || !rawFile) {
-        usage();
-        CliUtils.fail('Missing required -name or -file.');
-    }
-
-    const filePath: string = CliUtils.requireExistingFile(rawFile, 'Import file');
-    const options: ImportOptions = buildImportOptions(args);
-
-    const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
-    if (!tm) {
-        CliUtils.fail('No instance named "' + name + '". Run "hybridtm create" or "hybridtm list" first.');
-    }
-
-    try {
-        const type: ImportType = resolveImportType(CliUtils.getFlag(args, '-type'), filePath);
-        const count: number = await importFile(tm, filePath, type, options);
-        console.log('Imported ' + count + ' entries from ' + filePath + ' into "' + name + '".');
-    } catch (error: unknown) {
-        CliUtils.fail(error instanceof Error ? error.message : String(error));
-    } finally {
-        await tm.close();
-    }
-}
-
-export async function importFile(tm: HybridTM, filePath: string, type: ImportType, options: ImportOptions): Promise<number> {
-    switch (type) {
-        case 'xliff':
-            return await tm.importXLIFF(filePath, options);
-        case 'tmx':
-            return await tm.importTMX(filePath, options);
-        case 'sdltm':
-            return await tm.importSDLTM(filePath, options);
-    }
-}
-
-export function resolveImportType(explicit: string | undefined, filePath: string): ImportType {
-    if (explicit === 'xliff' || explicit === 'tmx' || explicit === 'sdltm') {
-        return explicit;
-    }
-    if (explicit !== undefined) {
-        throw new Error('Unknown import type "' + explicit + '". Expected xliff, tmx, or sdltm.');
-    }
-    const ext: string = extname(filePath).toLowerCase();
-    if (ext === '.xlf' || ext === '.xliff') {
-        return 'xliff';
-    }
-    if (ext === '.tmx') {
-        return 'tmx';
-    }
-    if (ext === '.sdltm') {
-        return 'sdltm';
-    }
-    throw new Error('Could not infer import type from "' + filePath + '". Pass an explicit type.');
-}
-
-function buildImportOptions(args: string[]): ImportOptions {
-    const options: ImportOptions = {
-        skipEmpty: !CliUtils.hasFlag(args, '-keepEmpty'),
-        extractMetadata: !CliUtils.hasFlag(args, '-noMetadata')
-    };
-    const minState: string | undefined = CliUtils.getFlag(args, '-minState');
-    if (minState !== undefined) {
-        if (!isTranslationState(minState)) {
-            CliUtils.fail('Unknown -minState value "' + minState + '". Expected initial, translated, reviewed, or final.');
+    static async run(args: string[]): Promise<void> {
+        if (CliUtils.hasFlag(args, '-help')) {
+            ImportCommand.usage();
+            return;
         }
-        options.minState = minState;
-    }
-    return options;
-}
 
-export function isTranslationState(value: string): value is TranslationState {
-    return value === 'initial' || value === 'translated' || value === 'reviewed' || value === 'final';
+        const name: string | undefined = CliUtils.getFlag(args, '-name');
+        const rawFile: string | undefined = CliUtils.getFlag(args, '-file');
+        if (!name || !rawFile) {
+            ImportCommand.usage();
+            CliUtils.fail('Missing required -name or -file.');
+        }
+
+        const filePath: string = CliUtils.requireExistingFile(rawFile, 'Import file');
+        const options: ImportOptions = ImportCommand.buildImportOptions(args);
+
+        const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
+        if (!tm) {
+            CliUtils.fail('No instance named "' + name + '". Run "hybridtm create" or "hybridtm list" first.');
+        }
+
+        try {
+            const type: ImportType = ImportCommand.resolveImportType(CliUtils.getFlag(args, '-type'), filePath);
+            const count: number = await ImportCommand.importFile(tm, filePath, type, options);
+            console.log('Imported ' + count + ' entries from ' + filePath + ' into "' + name + '".');
+        } catch (error: unknown) {
+            CliUtils.fail(error instanceof Error ? error.message : String(error));
+        } finally {
+            await tm.close();
+        }
+    }
+
+    static async importFile(tm: HybridTM, filePath: string, type: ImportType, options: ImportOptions): Promise<number> {
+        switch (type) {
+            case 'xliff':
+                return await tm.importXLIFF(filePath, options);
+            case 'tmx':
+                return await tm.importTMX(filePath, options);
+            case 'sdltm':
+                return await tm.importSDLTM(filePath, options);
+        }
+    }
+
+    static resolveImportType(explicit: string | undefined, filePath: string): ImportType {
+        if (explicit === 'xliff' || explicit === 'tmx' || explicit === 'sdltm') {
+            return explicit;
+        }
+        if (explicit !== undefined) {
+            throw new Error('Unknown import type "' + explicit + '". Expected xliff, tmx, or sdltm.');
+        }
+        const ext: string = extname(filePath).toLowerCase();
+        if (ext === '.xlf' || ext === '.xliff') {
+            return 'xliff';
+        }
+        if (ext === '.tmx') {
+            return 'tmx';
+        }
+        if (ext === '.sdltm') {
+            return 'sdltm';
+        }
+        throw new Error('Could not infer import type from "' + filePath + '". Pass an explicit type.');
+    }
+
+    static isTranslationState(value: string): value is TranslationState {
+        return value === 'initial' || value === 'translated' || value === 'reviewed' || value === 'final';
+    }
+
+    private static buildImportOptions(args: string[]): ImportOptions {
+        const options: ImportOptions = {
+            skipEmpty: !CliUtils.hasFlag(args, '-keepEmpty'),
+            extractMetadata: !CliUtils.hasFlag(args, '-noMetadata')
+        };
+        const minState: string | undefined = CliUtils.getFlag(args, '-minState');
+        if (minState !== undefined) {
+            if (!ImportCommand.isTranslationState(minState)) {
+                CliUtils.fail('Unknown -minState value "' + minState + '". Expected initial, translated, reviewed, or final.');
+            }
+            options.minState = minState;
+        }
+        return options;
+    }
 }

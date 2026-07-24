@@ -581,7 +581,7 @@ export class HybridTM {
         }
     }
 
-    async semanticTranslationSearch(searchStr: string, srcLang: string, tgtLang: string, similarity: number, limit: number = 100, filters?: TranslationSearchFilters): Promise<Array<Match>> {
+    async semanticTranslationSearch(searchStr: string, srcLang: string, tgtLang: string, similarity: number, limit: number = 10, filters?: TranslationSearchFilters): Promise<Array<Match>> {
         try {
             const table: Table = await this.ensureTable();
 

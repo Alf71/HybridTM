@@ -152,9 +152,8 @@ Once the job finishes, `status` returns `{ "imported": <count> }` as the result 
   "name": "project",
   "file": "./new-content.xlf",
   "output": "./new-content.matches.xlf",
-  "limit": 5,
   "similarity": 60,
-  "all": false
+  "limit": 5
 }
 ```
 
@@ -162,12 +161,27 @@ Once the job finishes, `status` returns `{ "imported": <count> }` as the result 
 | --- | --- | --- |
 | `name` | yes | Instance to search against (must already be `open`) |
 | `file` | yes | XLIFF file to enrich |
+| `similarity` | yes | Minimum hybrid match score, 0-100 |
 | `output` | no | Output path; defaults to `<file-without-extension>.matches.xlf` next to the input |
-| `limit` | no | Max candidates per segment (default: 5) |
-| `similarity` | no | Minimum hybrid match score, 0-100 (default: 60) |
-| `all` | no | `true` to consider every segment, not just untranslated ones (default: `false`) |
+| `limit` | no | Max candidates per segment; defaults to `semanticTranslationSearch`'s own default (10) when omitted |
 
-For every segment, it runs `semanticTranslationSearch` and adds a `<mtc:match>` (Translation Candidates module) entry to that unit's `<mtc:matches>` block. It never modifies `<target>` and never overwrites the input file. See [05 · Command-Line Interface](05-command-line-interface.md#match--enrich-an-xliff-file-with-tm-candidates) for the full `<mtc:match>` output format, score mapping, and inline-code handling. Once the job finishes, `status`'s result is `{ "segmentsProcessed": n, "segmentsWithMatches": n, "totalMatches": n, "outputPath": "…" }`.
+Every segment is processed except ones with `state="final"`.
+
+For every segment, it runs `semanticTranslationSearch` and adds a `<mtc:match>` (Translation Candidates module, `urn:oasis:names:tc:xliff:matches:2.0`) entry to that unit's `<mtc:matches>` block:
+
+```xml
+<unit id="auth.signin">
+  <mtc:matches>
+    <mtc:match matchQuality="92" origin="project" ref="#seg1" similarity="85" type="tm">
+      <source>Sign in</source>
+      <target>Iniciar sesión</target>
+    </mtc:match>
+  </mtc:matches>
+  ...
+</unit>
+```
+
+`matchQuality` is the overall (hybrid) score; `similarity` here is source-to-source text similarity only. `origin` is the instance name; `ref` points at the specific segment the candidate applies to. Inline codes (`<ph>`, etc.) in the matched source/target are converted to XLIFF's own `<ph>`/`<originalData>` representation. Once the job finishes, `status`'s result is `{ "segmentsProcessed": n, "segmentsWithMatches": n, "totalMatches": n, "outputPath": "…" }`.
 
 ### `status`
 
@@ -245,7 +259,7 @@ These require the instance to be `open` and return their result inline (not tick
 }
 ```
 
-`similarity` is required (there is no library-level default). `limit`/`filters` are optional. Payload is `Match[]`, serialized via `Match.toJSON()`: `source`/`target` come through as XML strings alongside `origin`, `type`, `similarity`, `semantic`, `fuzzy`, and `properties`.
+`similarity` is required. `limit`/`filters` are optional. Payload is `Match[]`, serialized via `Match.toJSON()`: `source`/`target` come through as XML strings alongside `origin`, `type`, `similarity`, `semantic`, `fuzzy`, and `properties`.
 
 ## `storeXliffUnit`
 
@@ -263,7 +277,7 @@ For editors/CAT tools that want to persist a single confirmed `<unit>` as the us
 }
 ```
 
-Internally the server wraps `unit` in a minimal `<xliff>`/`<file>` shell using `fileId`/`original`/`srcLang`/`tgtLang`, writes it to a temporary file, and runs it through the same import pipeline as `import` (with default `ImportOptions`; this command doesn't expose `minState`/`keepEmpty`/`noMetadata`), so the segment/state rules from [02 · Importing Data](02-importing-data.md) apply identically. A single unit is fast enough to run synchronously; this command is **not** ticketed and returns `{ "status": "success", "payload": {} }` directly.
+This command returns `{ "status": "success", "payload": {} }` directly on success.
 
 ## `stop`
 
