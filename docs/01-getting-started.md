@@ -20,7 +20,7 @@ npm install hybridtm
 ### Work directly from this repository
 
 ```bash
-git clone https://github.com/rmraya/HybridTM.git
+git clone https://github.com/maxprograms-com/HybridTM.git
 cd HybridTM
 npm install
 npm run build
