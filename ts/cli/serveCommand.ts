@@ -2,7 +2,7 @@
  * Copyright (c) 2025-2026 Maxprograms.
  *
  * This program and the accompanying materials
- * are made available under the terms of the Eclipse   License 1.0
+ * are made available under the terms of the Eclipse  License 1.0
  * which accompanies this distribution, and is available at
  * https://www.eclipse.org/org/documents/epl-v10.html
  *
@@ -11,6 +11,7 @@
  *******************************************************************************/
 
 import { ChildProcess, spawn } from "node:child_process";
+import { IncomingMessage, request } from "node:http";
 import { fileURLToPath } from "node:url";
 import { CliUtils } from './cliUtils.js';
 
@@ -73,13 +74,13 @@ export class ServeCommand {
 
     private static pingServer(host: string, port: number): Promise<void> {
         return new Promise<void>((resolve, reject) => {
-            const client = require('node:http').request({
+            const client = request({
                 host: host,
                 port: port,
                 method: 'POST',
                 path: '/',
                 headers: { 'Content-Type': 'application/json' }
-            }, (res: any) => {
+            }, (res: IncomingMessage) => {
                 res.on('data', () => {});
                 res.on('end', () => resolve());
             });
