@@ -1,5 +1,9 @@
 # HybridTM
 
+[![npm version](https://img.shields.io/npm/v/hybridtm)](https://www.npmjs.com/package/hybridtm)
+[![npm license](https://img.shields.io/npm/l/hybridtm)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/implementation-native%20TypeScript-3178c6)](https://www.typescriptlang.org/)
+
 HybridTM is a semantic translation memory engine that stores bilingual content in LanceDB and scores matches by combining semantic embeddings (Hugging Face Transformers.js) with the built-in MatchQuality fuzzy metric.
 
 ## Highlights
