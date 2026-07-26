@@ -107,7 +107,7 @@ npm install -g hybridtm
 
 hybridtm create  -name project -path ./project.lancedb
 hybridtm import  -name project -file ./translations/project.xlf
-hybridtm match   -name project -file ./new-content.xlf -similarity 60 -output ./new-content.matches.xlf
+hybridtm match   -name project -file ./new-content.xlf -quality 60 -output ./new-content.matches.xlf
 hybridtm backup  -name project -file ./project-backup.xml
 hybridtm restore -file ./project-backup.xml -name project
 hybridtm list

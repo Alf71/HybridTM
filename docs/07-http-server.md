@@ -57,7 +57,7 @@ Every response has one of two shapes:
 
 ## Instance lifecycle: `open` / `close`
 
-The server keeps a `HybridTM` instance (and its loaded embedder) in memory across requests, until it's explicitly closed. Every data command below (`import`, `match`, `batchTranslate`, `storeXliffUnit`, `concordanceSearch`, `semanticSearch`, `semanticTranslationSearch`, `close`) requires the instance to already be open.
+The server keeps a `HybridTM` instance (and its loaded embedder) in memory across requests, until it's explicitly closed. Every data command below (`import`, `match`, `backup`, `batchTranslate`, `storeXliffUnit`, `concordanceSearch`, `semanticSearch`, `semanticTranslationSearch`, `close`) requires the instance to already be open. `restore` requires it too, unless `create` is used (see below).
 
 ### `open`
 
@@ -109,9 +109,9 @@ If the instance is currently open, it is closed first (so its LanceDB directory 
 
 Payload is `HybridTMInstanceMetadata[]`, the same array `HybridTMFactory.listInstances()` returns (`name`, `filePath`, `modelName`, `createdAt`).
 
-## Long-running commands: `import` and `match`
+## Long-running commands: `import`, `match`, `backup`, and `restore`
 
-Importing a large XLIFF/TMX/SDLTM file (generating an embedding per segment) or matching a file against an instance (running a semantic search per segment) can take a while, so neither command blocks the request until the work finishes. Both start the operation in the background and return a **ticket** immediately; poll `status` to find out when it's done.
+Importing a large XLIFF/TMX/SDLTM file (generating an embedding per segment), matching a file against an instance (running a semantic search per segment), backing up an instance, or restoring one can all take a while, so none of these commands block the request until the work finishes. Each starts the operation in the background and returns a **ticket** immediately; poll `status` to find out when it's done.
 
 ### `import`
 
@@ -152,7 +152,7 @@ Once the job finishes, `status` returns `{ "imported": <count> }` as the result 
   "name": "project",
   "file": "./new-content.xlf",
   "output": "./new-content.matches.xlf",
-  "similarity": 60,
+  "quality": 60,
   "limit": 5
 }
 ```
@@ -161,7 +161,7 @@ Once the job finishes, `status` returns `{ "imported": <count> }` as the result 
 | --- | --- | --- |
 | `name` | yes | Instance to search against (must already be `open`) |
 | `file` | yes | XLIFF file to enrich |
-| `similarity` | yes | Minimum hybrid match score, 0-100 |
+| `quality` | yes | Minimum hybrid match score, 0-100, written to the output's `@matchQuality` attribute |
 | `output` | no | Output path; defaults to `<file-without-extension>.matches.xlf` next to the input |
 | `limit` | no | Max candidates per segment; defaults to `semanticTranslationSearch`'s own default (10) when omitted |
 
@@ -182,6 +182,46 @@ For every segment, it runs `semanticTranslationSearch` and adds a `<mtc:match>` 
 ```
 
 `matchQuality` is the overall (hybrid) score; `similarity` here is source-to-source text similarity only. `origin` is the instance name; `ref` points at the specific segment the candidate applies to. Inline codes (`<ph>`, etc.) in the matched source/target are converted to XLIFF's own `<ph>`/`<originalData>` representation. Once the job finishes, `status`'s result is `{ "segmentsProcessed": n, "segmentsWithMatches": n, "totalMatches": n, "outputPath": "…" }`.
+
+### `backup`
+
+```json
+{ "command": "backup", "name": "project", "file": "./project-backup.xml" }
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `name` | yes | Instance to back up (must already be `open`) |
+| `file` | yes | Output XML file path |
+
+Once the job finishes, `status`'s result is `{ "backedUp": <count> }`.
+
+### `restore`
+
+```json
+{ "command": "restore", "file": "./project-backup.xml", "name": "project" }
+```
+
+```json
+{
+  "command": "restore",
+  "file": "./project-backup.xml",
+  "create": true,
+  "path": "./project.lancedb",
+  "name": "project",
+  "model": "large"
+}
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `file` | yes | Backup XML file to restore |
+| `name` | see below | Existing open instance to restore into (appending its entries). With `create`, the name for the new instance (default: the name recorded in the backup file) |
+| `create` | no | `true` to create a fresh instance before restoring, instead of appending to an already-open one |
+| `path` | with `create` | Directory for the new instance's LanceDB data |
+| `model` | no | Embedding model for the new instance when `create` is used (default: the model recorded in the backup file) |
+
+Without `create`, `name` is required and the instance must already be `open`. With `create`, the new instance is registered and left open on the server (no separate `open` call needed); `name`/`model` fall back to whatever the backup file itself recorded if omitted. Once the job finishes, `status`'s result is `{ "restored": <count>, "name": "<instance name>" }`.
 
 ### `status`
 
@@ -294,7 +334,7 @@ For editors/CAT tools that want to enrich a batch of `<unit>` elements with TM m
   ],
   "srcLang": "en",
   "tgtLang": "es",
-  "similarity": 60,
+  "quality": 60,
   "limit": 5,
   "fileId": "content.xlf"
 }
@@ -306,7 +346,7 @@ For editors/CAT tools that want to enrich a batch of `<unit>` elements with TM m
 | `units` | yes | Array of `<unit>` XML strings to enrich |
 | `srcLang` | yes | Source language of the units |
 | `tgtLang` | yes | Target language to search for |
-| `similarity` | yes | Minimum hybrid match score, 0-100 |
+| `quality` | yes | Minimum hybrid match score, 0-100, written to the output's `@matchQuality` attribute |
 | `limit` | no | Max candidates per segment; defaults to `semanticTranslationSearch`'s own default (10) when omitted |
 | `fileId` | no | File identifier for segment references; used in `ref` when a segment has no `id` |
 
@@ -347,6 +387,8 @@ Shuts down the HTTP server.
 | `list` | no | no | `HybridTMInstanceMetadata[]` |
 | `import` | yes | **yes** | `{ ticket }`, later `{ imported }` |
 | `match` | yes | **yes** | `{ ticket }`, later match stats |
+| `backup` | yes | **yes** | `{ ticket }`, later `{ backedUp }` |
+| `restore` | see above | **yes** | `{ ticket }`, later `{ restored, name }` |
 | `batchTranslate` | yes | no | enriched `units`, plus segment/match counts |
 | `status` | no | no | job status/result |
 | `concordanceSearch` | yes | no | `Map<string, XMLElement>[]` (as JSON) |

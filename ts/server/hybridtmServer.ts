@@ -13,18 +13,19 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, unlinkSync } from "node:fs";
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
+import { XliffMatch, XliffMatches } from "typesxliff";
+import { XMLAttribute, XMLElement } from "typesxml";
 import { CliUtils } from "../cli/cliUtils.js";
 import { ImportCommand, ImportType } from "../cli/importCommand.js";
 import { MatchCommand } from "../cli/matchCommand.js";
-import { HybridTMFactory, HybridTMInstanceMetadata } from '../hybridtmFactory.js';
+import { RestoreCommand } from "../cli/restoreCommand.js";
 import { HybridTM } from "../hybridtm.js";
+import { HybridTMFactory, HybridTMInstanceMetadata } from '../hybridtmFactory.js';
 import { ImportOptions } from "../importOptions.js";
-import { MetadataFilter, TranslationSearchFilters } from "../searchFilters.js";
-import { Match } from "../match.js";
 import { SearchResult } from "../langEntry.js";
+import { Match } from "../match.js";
+import { MetadataFilter, TranslationSearchFilters } from "../searchFilters.js";
 import { Utils } from "../utils.js";
-import { XliffMatch, XliffMatches } from "typesxliff";
-import { XMLAttribute, XMLElement } from "typesxml";
 
 interface JobRecord {
     status: 'running' | 'completed' | 'failed';
@@ -131,6 +132,12 @@ export class HybridTMServer {
         }
         if (command === 'match') {
             return this.handleMatch(request);
+        }
+        if (command === 'backup') {
+            return this.handleBackup(request);
+        }
+        if (command === 'restore') {
+            return this.handleRestore(request);
         }
         if (command === 'remove') {
             return this.handleRemove(request);
@@ -255,13 +262,100 @@ export class HybridTMServer {
         }
         const rawOutput: any = request.output;
         const outputPath: string = MatchCommand.resolveOutputPath(typeof rawOutput === 'string' && rawOutput.trim().length > 0 ? rawOutput : undefined, filePath);
-        const similarity: any = request.similarity;
-        if (typeof similarity !== 'number' || !Number.isInteger(similarity) || similarity < 0 || similarity > 100) {
-            return { status: 'failed', reason: 'Invalid similarity parameter; expected an integer between 0 and 100' };
+        const quality: any = request.quality;
+        if (typeof quality !== 'number' || !Number.isInteger(quality) || quality < 0 || quality > 100) {
+            return { status: 'failed', reason: 'Invalid quality parameter; expected an integer between 0 and 100' };
         }
         const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
 
-        const ticket: string = this.startJob(() => MatchCommand.matchXliffFile(instance, filePath, outputPath, similarity, limit));
+        const ticket: string = this.startJob(() => MatchCommand.matchXliffFile(instance, filePath, outputPath, quality, limit));
+        return { status: 'success', payload: { ticket: ticket } };
+    }
+
+    private handleBackup(request: any): unknown {
+        const name: any = request.name;
+        if (typeof name !== 'string' || name.trim().length === 0) {
+            return { status: 'failed', reason: 'Missing name parameter' };
+        }
+        const instance: HybridTM | undefined = this.instances.get(name);
+        if (!instance) {
+            return { status: 'failed', reason: 'Requested instance is not open' };
+        }
+        const rawFile: any = request.file;
+        if (typeof rawFile !== 'string' || rawFile.trim().length === 0) {
+            return { status: 'failed', reason: 'Missing file parameter' };
+        }
+        const outputPath: string = CliUtils.resolvePath(rawFile);
+
+        const ticket: string = this.startJob(async () => {
+            const count: number = await instance.backup(outputPath);
+            return { backedUp: count };
+        });
+        return { status: 'success', payload: { ticket: ticket } };
+    }
+
+    private async handleRestore(request: any): Promise<unknown> {
+        const rawFile: any = request.file;
+        if (typeof rawFile !== 'string' || rawFile.trim().length === 0) {
+            return { status: 'failed', reason: 'Missing file parameter' };
+        }
+        const filePath: string = CliUtils.resolvePath(rawFile);
+        if (!existsSync(filePath)) {
+            return { status: 'failed', reason: 'Backup file "' + filePath + '" does not exist' };
+        }
+
+        let target: HybridTM;
+        let targetName: string;
+        if (request.create === true) {
+            const rawPath: any = request.path;
+            if (typeof rawPath !== 'string' || rawPath.trim().length === 0) {
+                return { status: 'failed', reason: 'Missing path parameter for create' };
+            }
+            const resolvedPath: string = CliUtils.resolvePath(rawPath);
+
+            let name: string | undefined = typeof request.name === 'string' && request.name.trim().length > 0 ? request.name : undefined;
+            const modelAlias: string | undefined = typeof request.model === 'string' ? request.model : undefined;
+            let modelName: string | undefined = modelAlias ? CliUtils.resolveModelName(modelAlias) : undefined;
+
+            if (!name || !modelName) {
+                try {
+                    const header: { name: string; model: string } = await RestoreCommand.peekBackupHeader(filePath);
+                    name = name || header.name || undefined;
+                    modelName = modelName || header.model || undefined;
+                } catch (error: unknown) {
+                    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+                }
+            }
+            if (!name) {
+                return { status: 'failed', reason: 'Could not determine an instance name; pass name or restore from a backup file with a recorded name.' };
+            }
+            if (!modelName) {
+                return { status: 'failed', reason: 'Could not determine an embedding model; pass model or restore from a backup file with a recorded model.' };
+            }
+            try {
+                target = HybridTMFactory.createInstance(name, resolvedPath, modelName);
+            } catch (error: unknown) {
+                return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+            }
+            targetName = name;
+            this.instances.set(targetName, target);
+        } else {
+            const name: any = request.name;
+            if (typeof name !== 'string' || name.trim().length === 0) {
+                return { status: 'failed', reason: 'Missing name parameter' };
+            }
+            const instance: HybridTM | undefined = this.instances.get(name);
+            if (!instance) {
+                return { status: 'failed', reason: 'Requested instance is not open' };
+            }
+            target = instance;
+            targetName = name;
+        }
+
+        const ticket: string = this.startJob(async () => {
+            const count: number = await target.restore(filePath);
+            return { restored: count, name: targetName };
+        });
         return { status: 'success', payload: { ticket: ticket } };
     }
 
@@ -469,9 +563,9 @@ export class HybridTMServer {
             || typeof srcLang !== 'string' || typeof tgtLang !== 'string') {
             return { status: 'failed', reason: 'Missing units, srcLang or tgtLang parameter' };
         }
-        const similarity: any = request.similarity;
-        if (typeof similarity !== 'number' || !Number.isInteger(similarity) || similarity < 0 || similarity > 100) {
-            return { status: 'failed', reason: 'Invalid similarity parameter; expected an integer between 0 and 100' };
+        const quality: any = request.quality;
+        if (typeof quality !== 'number' || !Number.isInteger(quality) || quality < 0 || quality > 100) {
+            return { status: 'failed', reason: 'Invalid quality parameter; expected an integer between 0 and 100' };
         }
         const limit: number | undefined = typeof request.limit === 'number' ? request.limit : undefined;
         const fileId: string | undefined = typeof request.fileId === 'string' ? request.fileId : undefined;
@@ -503,7 +597,7 @@ export class HybridTMServer {
                         continue;
                     }
                     segmentsProcessed++;
-                    const results: Match[] = Utils.dedupeMatches(await instance.semanticTranslationSearch(pureSource, srcLang, tgtLang, similarity, limit));
+                    const results: Match[] = Utils.dedupeMatches(await instance.semanticTranslationSearch(pureSource, srcLang, tgtLang, quality, limit));
                     if (results.length === 0) {
                         continue;
                     }

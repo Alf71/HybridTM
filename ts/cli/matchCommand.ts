@@ -28,12 +28,12 @@ export interface MatchResult {
 export class MatchCommand {
 
     static usage(): void {
-        console.log('Usage: hybridtm match -name <name> -file <path> -similarity N [-output <path>]');
+        console.log('Usage: hybridtm match -name <name> -file <path> -quality N [-output <path>]');
         console.log('                       [-limit N]');
         console.log();
         console.log('  -name        TM instance to search against (required)');
         console.log('  -file        XLIFF file to enrich with match candidates (required)');
-        console.log('  -similarity  Minimum hybrid match score 0-100 (required)');
+        console.log('  -quality     Minimum hybrid match score 0-100, written as @matchQuality (required)');
         console.log('  -output      Output path (default: <file-without-ext>.matches.xlf)');
         console.log('  -limit       Max candidates per segment (default: 10)');
         console.log();
@@ -47,16 +47,16 @@ export class MatchCommand {
 
         const name: string | undefined = CliUtils.getFlag(args, '-name');
         const rawFile: string | undefined = CliUtils.getFlag(args, '-file');
-        const rawSimilarity: string | undefined = CliUtils.getFlag(args, '-similarity');
-        if (!name || !rawFile || !rawSimilarity) {
+        const rawQuality: string | undefined = CliUtils.getFlag(args, '-quality');
+        if (!name || !rawFile || !rawQuality) {
             MatchCommand.usage();
-            CliUtils.fail('Missing required -name, -file, or -similarity.');
+            CliUtils.fail('Missing required -name, -file, or -quality.');
         }
 
         const filePath: string = CliUtils.requireExistingFile(rawFile, 'XLIFF file');
         const rawLimit: string | undefined = CliUtils.getFlag(args, '-limit');
         const limit: number | undefined = rawLimit !== undefined ? MatchCommand.parseIntOption(rawLimit, '-limit', 1) : undefined;
-        const similarity: number = MatchCommand.parseIntOption(rawSimilarity, '-similarity', 0, 100);
+        const quality: number = MatchCommand.parseIntOption(rawQuality, '-quality', 0, 100);
         const outputPath: string = MatchCommand.resolveOutputPath(CliUtils.getFlag(args, '-output'), filePath);
 
         const tm: HybridTM | undefined = HybridTMFactory.getInstance(name);
@@ -65,7 +65,7 @@ export class MatchCommand {
         }
 
         try {
-            const result: MatchResult = await MatchCommand.matchXliffFile(tm, filePath, outputPath, similarity, limit);
+            const result: MatchResult = await MatchCommand.matchXliffFile(tm, filePath, outputPath, quality, limit);
             console.log('Segments processed: ' + result.segmentsProcessed);
             console.log('Segments with matches: ' + result.segmentsWithMatches);
             console.log('Total match candidates: ' + result.totalMatches);
@@ -77,7 +77,7 @@ export class MatchCommand {
         }
     }
 
-    static async matchXliffFile(tm: HybridTM, filePath: string, outputPath: string, similarity: number, limit?: number): Promise<MatchResult> {
+    static async matchXliffFile(tm: HybridTM, filePath: string, outputPath: string, quality: number, limit?: number): Promise<MatchResult> {
         const parser: XliffParser = new XliffParser();
         parser.parseFile(filePath);
         const document: XliffDocument | undefined = parser.getXliffDocument();
@@ -123,7 +123,7 @@ export class MatchCommand {
                         continue;
                     }
                     segmentsProcessed++;
-                    const results: Array<Match> = Utils.dedupeMatches(await tm.semanticTranslationSearch(pureSource, srcLang, tgtLang, similarity, limit));
+                    const results: Array<Match> = Utils.dedupeMatches(await tm.semanticTranslationSearch(pureSource, srcLang, tgtLang, quality, limit));
                     if (results.length === 0) {
                         continue;
                     }

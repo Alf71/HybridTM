@@ -104,7 +104,7 @@ export class RestoreCommand {
         return { tm, name };
     }
 
-    private static async peekBackupHeader(filePath: string): Promise<{ name: string; model: string }> {
+    static async peekBackupHeader(filePath: string): Promise<{ name: string; model: string }> {
         const reader: BackupReader = new BackupReader(filePath);
         await reader.parse();
         if (existsSync(reader.getTempFilePath())) {

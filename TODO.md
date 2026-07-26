@@ -1,8 +1,6 @@
 # TODO
 
-- Implement progress reporting for long-running imports without relying on console logging.
-  - For direct library use: add an optional progress callback (e.g. `onProgress?: (processed: number, total: number) => void`) to `BatchImporter`, invoked at the same points as the current `console.log` calls in `import()` (ts/batchImporter.ts).
-  - For the HTTP server: extend `JobRecord` (ts/server/hybridtmServer.ts) to include progress fields and expose them in the existing ticket `status` response, since long-running tasks are already ticket-based and clients already poll for status.
+- Implement progress reporting for long-running operations (import, match, backup, restore) without relying on console logging or callbacks: track a processed-records count and expose it two ways from the same source, a simple method for direct library use, and the ticket's `status` response (`JobRecord`, ts/server/hybridtmServer.ts) for HTTP server use.
 - Implement proper retrieval using filters (`where` clauses) on metadata-derived fields (e.g. `unitId`, future provenance fields), not just the current `id`-prefix and vector-similarity search.
 - Design and implement provenance tracking based on the XLIFF 2.3 Provenance module (`<pvn:provenance>`/`<pvn:change>`, namespace `urn:oasis:names:tc:xliff:pvn:2.3`; spec still in draft as of 2026-07-20).
   - Internal storage: extend `SegmentMetadata` (ts/langEntry.ts) with provenance fields (`agent`/`tool`/`person`/`organization`/`timestamp`/`intent`, mirroring `<pvn:change>` attributes), riding the existing JSON `metadataSegment` column — additive, no schema migration needed.
