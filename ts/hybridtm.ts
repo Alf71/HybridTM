@@ -10,11 +10,11 @@
  *     Maxprograms - initial API and implementation
  *******************************************************************************/
 
-import { FeatureExtractionPipeline, pipeline, Tensor } from '@huggingface/transformers';
+import { env, FeatureExtractionPipeline, pipeline, Tensor } from '@huggingface/transformers';
 import { connect, Connection, Index, Table } from '@lancedb/lancedb';
 import { Field, FixedSizeList, Float32, Int32, Schema, Utf8 } from 'apache-arrow';
-import { createWriteStream, existsSync, unlinkSync, WriteStream } from 'node:fs';
-import { tmpdir } from "node:os";
+import { createWriteStream, existsSync, mkdirSync, unlinkSync, WriteStream } from 'node:fs';
+import { homedir, tmpdir } from "node:os";
 import { join } from 'node:path';
 import { TMReader } from 'sdltm';
 import { XMLAttribute, XMLElement } from 'typesxml';
@@ -46,6 +46,7 @@ export class HybridTM {
     private modelName: string = '';
     private initialized: boolean = false;
     private initializationPromise: Promise<void> | null = null;
+    private static modelCacheConfigured: boolean = false;
 
     constructor(name: string, filePath: string, modelName: string = HybridTM.LARGE_MODEL) {
         this.name = name;
@@ -158,6 +159,7 @@ export class HybridTM {
 
     private async loadEmbedder(): Promise<void> {
         try {
+            HybridTM.configureModelCacheDir();
             // dtype must be explicit: some models ship an unquantized model.onnx that
             // requires an external model.onnx_data file Transformers.js does not reliably
             // fetch/mount; quantized variants are single-file and avoid it.
@@ -167,6 +169,16 @@ export class HybridTM {
             console.error('Error initializing embedder:', err);
             throw err;
         }
+    }
+
+    private static configureModelCacheDir(): void {
+        if (HybridTM.modelCacheConfigured) {
+            return;
+        }
+        const cacheDir: string = join(homedir(), '.cache', 'hybridtm', 'models');
+        mkdirSync(cacheDir, { recursive: true });
+        env.cacheDir = cacheDir;
+        HybridTM.modelCacheConfigured = true;
     }
 
     private async generateEmbedding(text: string): Promise<number[]> {
