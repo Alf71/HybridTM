@@ -35,7 +35,7 @@ export class MatchCommand {
         console.log('  -file        XLIFF file to enrich with match candidates (required)');
         console.log('  -similarity  Minimum hybrid match score 0-100 (required)');
         console.log('  -output      Output path (default: <file-without-ext>.matches.xlf)');
-        console.log('  -limit       Max candidates per segment (default: HybridTM.semanticTranslationSearch\'s own default)');
+        console.log('  -limit       Max candidates per segment (default: 10)');
         console.log();
     }
 
